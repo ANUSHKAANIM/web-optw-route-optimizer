@@ -49,13 +49,23 @@ export function TrainingMetricsChart() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="grid gap-6 duration-500 animate-in fade-in slide-in-from-bottom-2 lg:grid-cols-2">
       <ChartCard title="Average reward per epoch">
         <LineChart data={rows}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-          <XAxis dataKey="epoch" tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 11 }} />
-          <Tooltip contentStyle={{ fontSize: 12 }} />
+          <XAxis dataKey="epoch" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+          <YAxis tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+          <Tooltip
+            contentStyle={{
+              fontSize: 12,
+              background: "var(--popover)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              boxShadow: "0 8px 24px -8px rgb(0 0 0 / 0.25)",
+            }}
+            labelStyle={{ color: "var(--muted-foreground)" }}
+            itemStyle={{ color: "var(--popover-foreground)" }}
+          />
           <Line type="monotone" dataKey="averageReward" stroke="var(--chart-1)" dot={false} strokeWidth={2} />
         </LineChart>
       </ChartCard>
@@ -63,9 +73,19 @@ export function TrainingMetricsChart() {
       <ChartCard title="Training loss per epoch">
         <LineChart data={rows}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-          <XAxis dataKey="epoch" tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 11 }} />
-          <Tooltip contentStyle={{ fontSize: 12 }} />
+          <XAxis dataKey="epoch" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+          <YAxis tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+          <Tooltip
+            contentStyle={{
+              fontSize: 12,
+              background: "var(--popover)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              boxShadow: "0 8px 24px -8px rgb(0 0 0 / 0.25)",
+            }}
+            labelStyle={{ color: "var(--muted-foreground)" }}
+            itemStyle={{ color: "var(--popover-foreground)" }}
+          />
           <Line type="monotone" dataKey="loss" stroke="var(--chart-2)" dot={false} strokeWidth={2} />
         </LineChart>
       </ChartCard>
@@ -75,7 +95,7 @@ export function TrainingMetricsChart() {
 
 function ChartCard({ title, children }: { title: string; children: React.ReactElement }) {
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className="card-interactive rounded-lg border bg-card p-4">
       <h3 className="mb-3 text-sm font-medium text-muted-foreground">{title}</h3>
       <ResponsiveContainer width="100%" height={280}>
         {children}
