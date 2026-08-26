@@ -8,8 +8,23 @@ const nextConfig: NextConfig = {
   // webpack/turbopack bundles them, so both must be required at runtime
   // unbundled instead.
   serverExternalPackages: ["onnxruntime-node", "@electric-sql/pglite"],
+  // onnxruntime-node loads its native .node/.so binaries dynamically at
+  // runtime (based on process.platform/arch), so Next's static file tracer
+  // can't discover them on its own -- every route that transitively imports
+  // the inference service (directly, or via run.service -> optimizer.service)
+  // needs them explicitly included, or the deployed function 500s with
+  // "cannot open shared object file".
   outputFileTracingIncludes: {
-    "/api/runs/**": ["./model/**"],
+    // onnxruntime-node is lazy-imported (see inference.service.ts) so only
+    // routes that actually run inference ever touch it -- GET-only routes
+    // like /history or /runs/[id] never do. Native addons aren't statically
+    // traceable, so the binary must be listed explicitly here or the
+    // deployed function 500s with "cannot open shared object file". Kept to
+    // exactly 2 route files (POST /api/runs, and the consolidated
+    // /api/runs/[id] handling GET/POST/PATCH) -- routes singled out here
+    // lose Next's automatic function-sharing and become isolated Lambdas, and
+    // more than a couple of those blows past Vercel Hobby's 12-function cap.
+    "/api/runs/**": ["./model/**", "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/**"],
   },
   // Pins the workspace root to this app (avoids Next.js misdetecting a
   // package-lock.json elsewhere on disk as the monorepo root).

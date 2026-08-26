@@ -24,13 +24,13 @@ export const apiClient = {
   getRun: (id: number) => request<RunView>(`/api/runs/${id}`),
 
   stepRun: (id: number, node: number) =>
-    request<RunView>(`/api/runs/${id}/step`, { method: "POST", body: JSON.stringify({ node }) }),
+    request<RunView>(`/api/runs/${id}`, { method: "POST", body: JSON.stringify({ node }) }),
 
-  endRun: (id: number) => request<RunView>(`/api/runs/${id}/end`, { method: "POST" }),
+  endRun: (id: number) => request<RunView>(`/api/runs/${id}`, { method: "PATCH" }),
 
-  compareRun: (id: number) => request<ComparisonView>(`/api/runs/${id}/compare`),
+  compareRun: (id: number) => request<ComparisonView>(`/api/runs/${id}?view=compare`),
 
-  listEvents: (id: number) => request<{ events: RunEvent[] }>(`/api/runs/${id}/events`),
+  listEvents: (id: number) => request<{ events: RunEvent[] }>(`/api/runs/${id}?view=events`),
 
   listRuns: (query: Partial<ListRunsQuery>) => {
     const params = new URLSearchParams(query as Record<string, string>);

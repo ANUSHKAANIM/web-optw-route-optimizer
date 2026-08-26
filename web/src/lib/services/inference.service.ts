@@ -1,10 +1,19 @@
 import path from "node:path";
-import * as ort from "onnxruntime-node";
+import type * as OrtTypes from "onnxruntime-node";
 
 /**
  * Manages the ONNX inference session for the trained PointerNetwork.
  * The exported graph performs one full decision step: LSTM cell update +
  * masked pointing-network forward pass (see model/export_to_onnx.py).
+ *
+ * `onnxruntime-node` is loaded via a lazy `import()`, not a top-level
+ * `import`, so that routes which never actually run inference (e.g. GET
+ * /history, GET /runs/[id]) don't pull in its native binary at all. That
+ * matters on Vercel: the binary must be explicitly included in
+ * `outputFileTracingIncludes` (native addons aren't statically traceable),
+ * and doing that for every route that merely imports this module
+ * transitively -- rather than only the few that actually call it -- was
+ * enough extra "functions" to trip the Hobby plan's 12-function cap.
  */
 
 const HIDDEN_DIM = 128;
@@ -13,11 +22,16 @@ const HIDDEN_DIM = 128;
 // Regenerate from the repo root with: ./rl_env/Scripts/python.exe model/export_to_onnx.py
 const MODEL_PATH = path.join(process.cwd(), "model", "optw_model.onnx");
 
-let sessionPromise: Promise<ort.InferenceSession> | null = null;
+let ortModulePromise: Promise<typeof OrtTypes> | null = null;
+function getOrt(): Promise<typeof OrtTypes> {
+  if (!ortModulePromise) ortModulePromise = import("onnxruntime-node");
+  return ortModulePromise;
+}
 
-function getSession(): Promise<ort.InferenceSession> {
+let sessionPromise: Promise<OrtTypes.InferenceSession> | null = null;
+function getSession(): Promise<OrtTypes.InferenceSession> {
   if (!sessionPromise) {
-    sessionPromise = ort.InferenceSession.create(MODEL_PATH);
+    sessionPromise = getOrt().then((ort) => ort.InferenceSession.create(MODEL_PATH));
   }
   return sessionPromise;
 }
@@ -55,10 +69,10 @@ export interface StepInferenceOutput {
  * and decoder memory, returns per-node selection probabilities and the
  * updated decoder memory to carry into the next step. */
 export async function runInferenceStep(input: StepInferenceInput): Promise<StepInferenceOutput> {
-  const session = await getSession();
+  const [session, ort] = await Promise.all([getSession(), getOrt()]);
   const numNodes = input.staticFeats.length;
 
-  const feeds: Record<string, ort.Tensor> = {
+  const feeds: Record<string, OrtTypes.Tensor> = {
     static_feats: new ort.Tensor("float32", flatten(input.staticFeats), [1, numNodes, 7]),
     dynamic_feats: new ort.Tensor("float32", flatten(input.dynamicFeats), [1, numNodes, 9]),
     adj_mask: new ort.Tensor("bool", flattenBool(input.adjMask), [1, numNodes, numNodes]),
