@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+rl_env/
+
+# Node / Next.js (web/ has its own more detailed .gitignore too)
+node_modules/
+.next/
+out/
+
+# Editors / OS
+.DS_Store
+*.pem
+
+# Env files
+.env
+.env.local
+.env*.local
