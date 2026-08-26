@@ -1,5 +1,5 @@
 import { and, desc, asc, eq, count, type SQL } from "drizzle-orm";
-import { getDb } from "@/db/client";
+import { getDbAsync } from "@/db/client";
 import { runEvents, runs, type NewRun, type NewRunEvent, type Run, type RunStatus } from "@/db/schema";
 import { NotFoundError } from "@/lib/errors/domain-error";
 import type { ListRunsQuery } from "@/lib/dto/run.dto";
@@ -8,18 +8,21 @@ import type { ListRunsQuery } from "@/lib/dto/run.dto";
  * only persistence concerns. */
 export const runRepository = {
   async create(data: NewRun): Promise<Run> {
-    const [row] = await getDb().insert(runs).values(data).returning();
+    const db = await getDbAsync();
+    const [row] = await db.insert(runs).values(data).returning();
     return row;
   },
 
   async findById(id: number): Promise<Run> {
-    const [row] = await getDb().select().from(runs).where(eq(runs.id, id)).limit(1);
+    const db = await getDbAsync();
+    const [row] = await db.select().from(runs).where(eq(runs.id, id)).limit(1);
     if (!row) throw new NotFoundError(`Run ${id} was not found.`);
     return row;
   },
 
   async update(id: number, data: Partial<NewRun>): Promise<Run> {
-    const [row] = await getDb()
+    const db = await getDbAsync();
+    const [row] = await db
       .update(runs)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(runs.id, id))
@@ -31,7 +34,7 @@ export const runRepository = {
   async list(
     query: ListRunsQuery,
   ): Promise<{ items: Run[]; total: number; page: number; pageSize: number }> {
-    const db = getDb();
+    const db = await getDbAsync();
     const conditions: SQL[] = [];
     if (query.status) conditions.push(eq(runs.status, query.status as RunStatus));
     const where = conditions.length ? and(...conditions) : undefined;
@@ -56,11 +59,13 @@ export const runRepository = {
   },
 
   async appendEvent(data: NewRunEvent): Promise<void> {
-    await getDb().insert(runEvents).values(data);
+    const db = await getDbAsync();
+    await db.insert(runEvents).values(data);
   },
 
   async listEvents(runId: number) {
-    return getDb()
+    const db = await getDbAsync();
+    return db
       .select()
       .from(runEvents)
       .where(eq(runEvents.runId, runId))

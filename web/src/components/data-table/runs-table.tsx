@@ -149,6 +149,7 @@ export function RunsTable({ initial }: { initial: { items: Run[]; total: number;
                     <Button
                       variant="ghost"
                       size="icon"
+                      nativeButton={false}
                       render={<Link href={`/runs/${run.id}`} aria-label={`Open run ${run.id}`} />}
                     >
                       <ExternalLink className="size-4" />

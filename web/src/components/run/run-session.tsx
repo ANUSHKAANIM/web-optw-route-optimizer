@@ -117,7 +117,12 @@ export function RunSession({ initialView }: { initialView: RunView }) {
         </Card>
 
         {view.done && (
-          <Button variant="outline" className="w-full" render={<Link href="/history" />}>
+          <Button
+            variant="outline"
+            className="w-full"
+            nativeButton={false}
+            render={<Link href="/history" />}
+          >
             View run history
           </Button>
         )}

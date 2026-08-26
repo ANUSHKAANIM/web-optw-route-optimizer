@@ -133,24 +133,35 @@ Requires Node.js 20+.
 ```bash
 cd web
 npm install
-cp .env.example .env.local   # then fill in DATABASE_URL, see below
 npm run dev
 ```
 
-Visit `http://localhost:3000`. The **New Run** and **Training Metrics** pages
-work without a database; **Run History** and starting/stepping a run need
-`DATABASE_URL` set and migrated (below).
+Visit `http://localhost:3000` — that's it, no database setup required to
+run the full app locally. Every feature, including **Run History** and the
+interactive routing session, works out of the box.
 
 ## Database setup
 
-1. Create a free serverless Postgres database at [neon.tech](https://neon.tech).
-2. Copy its connection string into `web/.env.local` as `DATABASE_URL`.
-3. Apply the schema:
-   ```bash
-   npm run db:push
-   ```
-   (or `npm run db:generate && npm run db:migrate` to go through versioned
-   SQL migration files in `drizzle/` instead of pushing the schema directly).
+There are two modes, chosen automatically based on whether `DATABASE_URL` is set:
+
+- **Local development (default, zero setup)**: when `DATABASE_URL` is unset,
+  `src/db/client.ts` falls back to an embedded **PGlite** database (real
+  Postgres, compiled to WASM) stored at `web/.data/pglite/`, and applies the
+  SQL migrations in `drizzle/` automatically on first use. This is gitignored
+  and disposable — delete `.data/` any time to reset it. This path is never
+  used in production.
+- **Production / shared environments**: set `DATABASE_URL` to a real Postgres
+  connection string (e.g. from [Neon](https://neon.tech)) and the app uses
+  that instead — required once you deploy, since Vercel's serverless
+  functions can't persist a local file across invocations.
+
+To point local dev at a real Postgres instance instead of the embedded one
+(e.g. to share data with a teammate, or test against Neon before deploying):
+
+```bash
+cp .env.example .env.local   # fill in DATABASE_URL
+npm run db:push              # applies the schema to that database
+```
 
 ## Environment variables
 

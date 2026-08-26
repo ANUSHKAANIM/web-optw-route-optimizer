@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local embedded database (dev-only fallback when DATABASE_URL is unset)
+/.data
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

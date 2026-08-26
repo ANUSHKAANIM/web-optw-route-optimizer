@@ -66,7 +66,7 @@ export function TrainingMetricsChart() {
           <XAxis dataKey="epoch" tick={{ fontSize: 11 }} />
           <YAxis tick={{ fontSize: 11 }} />
           <Tooltip contentStyle={{ fontSize: 12 }} />
-          <Line type="monotone" dataKey="loss" stroke="var(--chart-4)" dot={false} strokeWidth={2} />
+          <Line type="monotone" dataKey="loss" stroke="var(--chart-2)" dot={false} strokeWidth={2} />
         </LineChart>
       </ChartCard>
     </div>
