@@ -4,11 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CheckCircle2, Flag, Loader2, MapPin, Timer, Trophy } from "lucide-react";
+import { CheckCircle2, Flag, GitCompareArrows, Loader2, MapPin, Timer, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RouteMap } from "@/components/map/route-map";
+import { RunReplay } from "@/components/run/run-replay";
 import { apiClient } from "@/lib/api-client";
 import type { RunView } from "@/lib/services/run.service";
 
@@ -47,8 +48,8 @@ export function RunSession({ initialView }: { initialView: RunView }) {
   const nextRecommendedNode = recommendedPath.length > 1 ? recommendedPath[1] : undefined;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-      <Card className="overflow-hidden">
+    <div className="grid gap-6 duration-500 animate-in fade-in slide-in-from-bottom-2 lg:grid-cols-[1fr_320px]">
+      <Card className="card-interactive overflow-hidden">
         <CardContent className="aspect-square p-2 sm:p-4">
           <RouteMap
             coords={view.coords}
@@ -66,7 +67,13 @@ export function RunSession({ initialView }: { initialView: RunView }) {
       <div className="space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">
+            <CardTitle className="flex items-center gap-2 text-base">
+              {!view.done && (
+                <span className="relative flex size-2">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                  <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+                </span>
+              )}
               {view.done ? "Route complete" : "Live routing"}
             </CardTitle>
           </CardHeader>
@@ -116,15 +123,28 @@ export function RunSession({ initialView }: { initialView: RunView }) {
           </CardContent>
         </Card>
 
+        <Button
+          variant="outline"
+          className="w-full gap-2"
+          nativeButton={false}
+          render={<Link href={`/runs/${view.run.id}/compare`} />}
+        >
+          <GitCompareArrows className="size-4" />
+          Compare greedy vs. beam
+        </Button>
+
         {view.done && (
-          <Button
-            variant="outline"
-            className="w-full"
-            nativeButton={false}
-            render={<Link href="/history" />}
-          >
-            View run history
-          </Button>
+          <>
+            <RunReplay runId={view.run.id} coords={view.coords} rewards={view.rewards} />
+            <Button
+              variant="outline"
+              className="w-full"
+              nativeButton={false}
+              render={<Link href="/history" />}
+            >
+              View run history
+            </Button>
+          </>
         )}
       </div>
     </div>

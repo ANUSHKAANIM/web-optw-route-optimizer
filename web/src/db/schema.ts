@@ -19,6 +19,10 @@ export const runs = pgTable("runs", {
   forecastEnabled: boolean("forecast_enabled").notNull(),
   seed: integer("seed").notNull(),
   status: text("status", { enum: RUN_STATUS }).notNull().default("in_progress"),
+  /** Snapshot taken at creation, before any steps -- never mutated again.
+   * Lets the greedy-vs-beam comparison always run on the original instance,
+   * regardless of how far the interactive session has since progressed. */
+  initialEnvState: jsonb("initial_env_state").notNull(),
   envState: jsonb("env_state").notNull(),
   decoderState: jsonb("decoder_state").notNull(),
   /** Latest computed beam-search recommendation from the current position;

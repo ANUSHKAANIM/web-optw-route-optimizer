@@ -10,8 +10,8 @@ import { applyChosenAction, optimizerService } from "@/lib/services/optimizer.se
 import { runRepository } from "@/lib/repositories/run.repository";
 import type { CreateRunRequest, ListRunsQuery } from "@/lib/dto/run.dto";
 import { InfeasibleActionError, RunAlreadyCompletedError } from "@/lib/errors/domain-error";
-import type { Run } from "@/db/schema";
-import type { RunService, RunView } from "@/lib/services/run.service";
+import type { Run, RunEvent } from "@/db/schema";
+import type { ComparisonView, RunService, RunView } from "@/lib/services/run.service";
 
 function toRunView(run: Run, forecastJustUpdated = false): RunView {
   const envSnapshot = run.envState as ReturnType<typeof snapshotEnvironment>;
@@ -56,6 +56,7 @@ async function createRun(request: CreateRunRequest): Promise<RunView> {
     forecastEnabled: request.enableForecastEvents,
     seed,
     status: "in_progress",
+    initialEnvState: snapshotEnvironment(env),
     envState: snapshotEnvironment(env),
     decoderState: snapshotDecoderState(advancedDecoderState),
     recommendation,
@@ -158,8 +159,39 @@ async function endRun(id: number): Promise<RunView> {
   return toRunView(updated);
 }
 
+async function compareRun(id: number): Promise<ComparisonView> {
+  const existing = await runRepository.findById(id);
+  const initialSnapshot = existing.initialEnvState as Parameters<typeof restoreEnvironment>[0];
+
+  const [greedy, beam] = await Promise.all([
+    optimizerService.greedySearch(restoreEnvironment(initialSnapshot)),
+    optimizerService.beamSearch(restoreEnvironment(initialSnapshot), existing.beamWidth),
+  ]);
+
+  return {
+    coords: initialSnapshot.coords,
+    rewards: initialSnapshot.rewards,
+    maxTime: initialSnapshot.config.maxTime,
+    greedy,
+    beam,
+    beamWidth: existing.beamWidth,
+  };
+}
+
+async function listEvents(id: number): Promise<RunEvent[]> {
+  return runRepository.listEvents(id);
+}
+
 async function listRuns(query: ListRunsQuery) {
   return runRepository.list(query);
 }
 
-export const runService: RunService = { createRun, getRun, stepRun, endRun, listRuns };
+export const runService: RunService = {
+  createRun,
+  getRun,
+  stepRun,
+  endRun,
+  compareRun,
+  listEvents,
+  listRuns,
+};

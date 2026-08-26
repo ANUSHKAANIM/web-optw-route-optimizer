@@ -1,6 +1,6 @@
-import type { RunView } from "@/lib/services/run.service";
+import type { ComparisonView, RunView } from "@/lib/services/run.service";
 import type { CreateRunRequest, ListRunsQuery } from "@/lib/dto/run.dto";
-import type { Run } from "@/db/schema";
+import type { Run, RunEvent } from "@/db/schema";
 
 /** Thin typed wrapper around the app's own API routes, used by client
  * components via TanStack Query. Throws with the server's error message on
@@ -27,6 +27,10 @@ export const apiClient = {
     request<RunView>(`/api/runs/${id}/step`, { method: "POST", body: JSON.stringify({ node }) }),
 
   endRun: (id: number) => request<RunView>(`/api/runs/${id}/end`, { method: "POST" }),
+
+  compareRun: (id: number) => request<ComparisonView>(`/api/runs/${id}/compare`),
+
+  listEvents: (id: number) => request<{ events: RunEvent[] }>(`/api/runs/${id}/events`),
 
   listRuns: (query: Partial<ListRunsQuery>) => {
     const params = new URLSearchParams(query as Record<string, string>);

@@ -16,11 +16,13 @@ export function MobileNav() {
   const pathname = usePathname();
 
   return (
-    <header className="flex flex-col border-b bg-sidebar text-sidebar-foreground md:hidden">
+    <header className="sticky top-0 z-20 flex flex-col border-b border-sidebar-border/60 bg-sidebar/95 text-sidebar-foreground backdrop-blur-sm md:hidden">
       <div className="flex h-14 items-center justify-between px-4">
         <div className="flex items-center gap-2">
-          <Route className="size-5 text-primary" aria-hidden />
-          <span className="font-semibold tracking-tight">OPTW Optimizer</span>
+          <span className="flex size-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/60 text-primary-foreground">
+            <Route className="size-3.5" aria-hidden />
+          </span>
+          <span className="font-heading font-semibold tracking-tight">OPTW Optimizer</span>
         </div>
         <div className="w-28">
           <ThemeToggle />
@@ -34,13 +36,13 @@ export function MobileNav() {
               key={href}
               href={href}
               className={cn(
-                "flex shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium",
+                "flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200 active:scale-95",
                 active
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground/70",
+                  : "text-sidebar-foreground/65",
               )}
             >
-              <Icon className="size-4" aria-hidden />
+              <Icon className={cn("size-4", active && "text-primary")} aria-hidden />
               {label}
             </Link>
           );

@@ -1,0 +1,1 @@
+ALTER TABLE "runs" ADD COLUMN "initial_env_state" jsonb NOT NULL;

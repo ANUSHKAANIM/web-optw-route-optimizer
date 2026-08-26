@@ -16,6 +16,33 @@ import { apiClient } from "@/lib/api-client";
 
 const DEFAULTS: CreateRunRequest = createRunSchema.parse({});
 
+const PRESETS: { label: string; description: string; values: Partial<CreateRunRequest> }[] = [
+  {
+    label: "Small delivery run",
+    description: "15 stops, tight 8h window",
+    values: { numNodes: 15, maxTime: 8, beamWidth: 16, rewardDecayMin: 0.4, enableForecastEvents: false },
+  },
+  {
+    label: "Large city sweep",
+    description: "80 stops, full day",
+    values: { numNodes: 80, maxTime: 24, beamWidth: 24, rewardDecayMin: 0.3, enableForecastEvents: false },
+  },
+  {
+    label: "Disaster evacuation",
+    description: "Shifting hazard, urgent decay",
+    values: {
+      numNodes: 40,
+      maxTime: 18,
+      beamWidth: 24,
+      rewardDecayMin: 0.1,
+      enableForecastEvents: true,
+      hazardRadius: 0.4,
+      forecastUpdateInterval: 3,
+      forecastNoise: 0.15,
+    },
+  },
+];
+
 export function NewRunForm() {
   const router = useRouter();
   const [values, setValues] = useState<CreateRunRequest>(DEFAULTS);
@@ -58,7 +85,21 @@ export function NewRunForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate>
-      <Card className="max-w-2xl">
+      <div className="mb-4 flex max-w-2xl flex-wrap gap-2 duration-500 animate-in fade-in slide-in-from-bottom-2">
+        {PRESETS.map((preset) => (
+          <button
+            key={preset.label}
+            type="button"
+            onClick={() => setValues((prev) => ({ ...prev, ...preset.values }))}
+            className="group rounded-lg border border-border bg-card px-3.5 py-2 text-left text-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md hover:shadow-primary/5"
+          >
+            <div className="font-medium group-hover:text-primary">{preset.label}</div>
+            <div className="text-muted-foreground">{preset.description}</div>
+          </button>
+        ))}
+      </div>
+
+      <Card className="max-w-2xl duration-500 animate-in fade-in slide-in-from-bottom-3">
         <CardHeader>
           <CardTitle>Configure a new route optimization</CardTitle>
           <CardDescription>

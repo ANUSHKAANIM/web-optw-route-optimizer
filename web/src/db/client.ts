@@ -65,17 +65,22 @@ export async function getDbAsync(): Promise<Db> {
 }
 
 /** Applies each SQL file under drizzle/ (in filename order) directly via
- * PGlite's client, if the `runs` table doesn't exist yet. Bypasses
- * drizzle-orm's migrate() helper, which reads migration files in a way that
- * doesn't survive Turbopack's dev bundling of this module; reading the raw
- * .sql files ourselves with plain `fs` sidesteps that entirely. Local
- * (PGlite) dev-only path -- production always migrates real Postgres via
- * `npm run db:push` / `db:migrate` against DATABASE_URL. */
+ * PGlite's client, tracking which ones have already run in a small
+ * `__optw_migrations` table (so re-adding a column later doesn't require
+ * wiping the local database). Bypasses drizzle-orm's migrate() helper, which
+ * reads migration files in a way that doesn't survive Turbopack's dev
+ * bundling of this module; reading the raw .sql files ourselves with plain
+ * `fs` sidesteps that entirely. Local (PGlite) dev-only path -- production
+ * always migrates real Postgres via `npm run db:push` / `db:migrate` against
+ * DATABASE_URL. */
 async function applyMigrationsIfNeeded(client: PGlite): Promise<void> {
-  const { rows } = await client.query<{ exists: boolean }>(
-    "SELECT to_regclass('public.runs') IS NOT NULL AS exists",
+  await client.exec(
+    "CREATE TABLE IF NOT EXISTS __optw_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())",
   );
-  if (rows[0]?.exists) return;
+  const { rows: applied } = await client.query<{ name: string }>(
+    "SELECT name FROM __optw_migrations",
+  );
+  const appliedNames = new Set(applied.map((r) => r.name));
 
   const migrationsDir = path.join(process.cwd(), "drizzle");
   const files = fs
@@ -84,10 +89,13 @@ async function applyMigrationsIfNeeded(client: PGlite): Promise<void> {
     .sort();
 
   for (const file of files) {
+    if (appliedNames.has(file)) continue;
+
     const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
     for (const statement of sql.split("--> statement-breakpoint")) {
       const trimmed = statement.trim();
       if (trimmed) await client.exec(trimmed);
     }
+    await client.query("INSERT INTO __optw_migrations (name) VALUES ($1)", [file]);
   }
 }

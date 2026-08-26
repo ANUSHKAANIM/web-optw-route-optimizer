@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { ArrowUpDown, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, ChevronRight, ExternalLink, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -33,6 +34,7 @@ const SORT_COLUMNS: { value: ListRunsQuery["sortBy"]; label: string }[] = [
 ];
 
 export function RunsTable({ initial }: { initial: { items: Run[]; total: number; page: number; pageSize: number } }) {
+  const router = useRouter();
   const [page, setPage] = useState(initial.page);
   const [sortBy, setSortBy] = useState<ListRunsQuery["sortBy"]>("createdAt");
   const [sortDir, setSortDir] = useState<ListRunsQuery["sortDir"]>("desc");
@@ -123,15 +125,34 @@ export function RunsTable({ initial }: { initial: { items: Run[]; total: number;
 
             {!query.isLoading && data.items.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
-                  No runs yet. Start one from the New Run page.
+                <TableCell colSpan={8} className="py-14 text-center">
+                  <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                    <Inbox className="size-8 opacity-50" />
+                    <p>No runs yet.</p>
+                    <Button size="sm" render={<Link href="/" />} nativeButton={false}>
+                      Start a new run
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             )}
 
             {!query.isLoading &&
               data.items.map((run) => (
-                <TableRow key={run.id}>
+                <TableRow
+                  key={run.id}
+                  className="group cursor-pointer transition-colors duration-150 hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
+                  tabIndex={0}
+                  role="link"
+                  aria-label={`Open run ${run.id}`}
+                  onClick={() => router.push(`/runs/${run.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      router.push(`/runs/${run.id}`);
+                    }
+                  }}
+                >
                   <TableCell className="font-mono text-xs">#{run.id}</TableCell>
                   <TableCell>
                     <Badge variant={run.status === "completed" ? "default" : "secondary"}>
@@ -146,14 +167,10 @@ export function RunsTable({ initial }: { initial: { items: Run[]; total: number;
                     {new Date(run.createdAt).toLocaleString()}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      nativeButton={false}
-                      render={<Link href={`/runs/${run.id}`} aria-label={`Open run ${run.id}`} />}
-                    >
-                      <ExternalLink className="size-4" />
-                    </Button>
+                    <ExternalLink
+                      className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+                      aria-hidden
+                    />
                   </TableCell>
                 </TableRow>
               ))}
