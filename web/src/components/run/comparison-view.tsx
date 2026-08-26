@@ -1,12 +1,48 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { RouteMap } from "@/components/map/route-map";
-import type { ComparisonView as ComparisonViewData } from "@/lib/services/run.service";
+import { apiClient } from "@/lib/api-client";
 
-export function ComparisonView({ data }: { data: ComparisonViewData }) {
-  const { coords, rewards, greedy, beam, beamWidth } = data;
+/** Fetches from the API route rather than calling the inference service
+ * directly from a server component: the ONNX runtime binary is only
+ * bundled for the handful of API routes that need it (see
+ * next.config.ts's outputFileTracingIncludes) -- a server component
+ * calling into it directly would need the same treatment, and each extra
+ * route singled out that way risks tipping Vercel's serverless function
+ * count over the Hobby plan's cap. */
+export function ComparisonView({ runId }: { runId: number }) {
+  const query = useQuery({
+    queryKey: ["run-compare", runId],
+    queryFn: () => apiClient.compareRun(runId),
+  });
+
+  if (query.isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-20 w-full" />
+        <div className="grid gap-6 md:grid-cols-2">
+          <Skeleton className="aspect-square w-full" />
+          <Skeleton className="aspect-square w-full" />
+        </div>
+      </div>
+    );
+  }
+
+  if (query.isError || !query.data) {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-muted-foreground">
+        <AlertTriangle className="size-8 opacity-60" />
+        <p>Couldn&apos;t load the comparison{query.error ? `: ${query.error.message}` : "."}</p>
+      </div>
+    );
+  }
+
+  const { coords, rewards, greedy, beam, beamWidth } = query.data;
   const delta = beam.totalReward - greedy.totalReward;
   const pctGain = greedy.totalReward > 0 ? (delta / greedy.totalReward) * 100 : 0;
 

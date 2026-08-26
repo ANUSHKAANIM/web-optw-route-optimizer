@@ -1,31 +1,13 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
-import { runService } from "@/lib/services/run.service.impl";
-import { NotFoundError } from "@/lib/errors/domain-error";
 import { Button } from "@/components/ui/button";
 import { ComparisonView } from "@/components/run/comparison-view";
-import type { ComparisonView as ComparisonViewData } from "@/lib/services/run.service";
-
-// Reads the run's immutable initial snapshot -- cheap, but always re-runs
-// greedy/beam search, so never statically prerendered.
-export const dynamic = "force-dynamic";
-
-async function loadComparison(runId: number): Promise<ComparisonViewData> {
-  try {
-    return await runService.compareRun(runId);
-  } catch (error) {
-    if (error instanceof NotFoundError) notFound();
-    throw error;
-  }
-}
 
 export default async function ComparePage({ params }: PageProps<"/runs/[id]/compare">) {
   const { id } = await params;
   const runId = Number(id);
   if (!Number.isInteger(runId) || runId <= 0) notFound();
-
-  const data = await loadComparison(runId);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
@@ -46,7 +28,7 @@ export default async function ComparePage({ params }: PageProps<"/runs/[id]/comp
           how the live session played out.
         </p>
       </div>
-      <ComparisonView data={data} />
+      <ComparisonView runId={runId} />
     </div>
   );
 }
