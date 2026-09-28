@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, History, LineChart, Route } from "lucide-react";
+import { LayoutDashboard, History, LineChart, MapPinned, Route } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 const NAV_ITEMS = [
   { href: "/", label: "New Run", icon: LayoutDashboard },
+  { href: "/play", label: "Multiplayer", icon: MapPinned },
   { href: "/history", label: "History", icon: History },
   { href: "/training", label: "Training", icon: LineChart },
 ];

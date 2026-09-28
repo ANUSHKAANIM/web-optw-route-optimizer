@@ -1,6 +1,8 @@
 import type { ComparisonView, RunView } from "@/lib/services/run.service";
 import type { CreateRunRequest, ListRunsQuery } from "@/lib/dto/run.dto";
 import type { Run, RunEvent } from "@/db/schema";
+import type { SessionView } from "@/lib/services/game.service";
+import type { CreateSessionRequest, JoinSessionRequest } from "@/lib/dto/game.dto";
 
 /** Thin typed wrapper around the app's own API routes, used by client
  * components via TanStack Query. Throws with the server's error message on
@@ -38,4 +40,25 @@ export const apiClient = {
       `/api/runs?${params.toString()}`,
     );
   },
+
+  createSession: (body: CreateSessionRequest) =>
+    request<SessionView>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
+
+  getSession: (id: number, playerId?: number) =>
+    request<SessionView>(`/api/sessions/${id}${playerId ? `?playerId=${playerId}` : ""}`),
+
+  joinSession: (id: number, body: JoinSessionRequest) =>
+    request<SessionView>(`/api/sessions/${id}`, { method: "POST", body: JSON.stringify(body) }),
+
+  stepPlayer: (id: number, playerId: number, node: number) =>
+    request<SessionView>(`/api/sessions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ playerId, node }),
+    }),
+
+  endPlayer: (id: number, playerId: number) =>
+    request<SessionView>(`/api/sessions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ playerId, end: true }),
+    }),
 };

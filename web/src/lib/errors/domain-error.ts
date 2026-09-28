@@ -34,3 +34,15 @@ export class RunAlreadyCompletedError extends DomainError {
     super(`Run ${runId} has already completed and cannot accept further steps.`, 409);
   }
 }
+
+export class SessionEndedError extends DomainError {
+  constructor(sessionId: number) {
+    super(`Session ${sessionId} has ended.`, 409);
+  }
+}
+
+export class PlayerAlreadyFinishedError extends DomainError {
+  constructor(playerId: number) {
+    super(`Player ${playerId} has already finished and cannot accept further steps.`, 409);
+  }
+}
