@@ -57,3 +57,60 @@ export type Run = typeof runs.$inferSelect;
 export type NewRun = typeof runs.$inferInsert;
 export type RunEvent = typeof runEvents.$inferSelect;
 export type NewRunEvent = typeof runEvents.$inferInsert;
+
+export const SESSION_STATUS = ["active", "ended"] as const;
+export type SessionStatus = (typeof SESSION_STATUS)[number];
+
+export const PLAYER_STATUS = ["active", "finished"] as const;
+export type PlayerStatus = (typeof PLAYER_STATUS)[number];
+
+/**
+ * A shared multiplayer Delhi orienteering game. Unlike `runs`, this table
+ * stores no environment snapshot: the ~80-place graph and travel-time matrix
+ * are static (see lib/env/geo-environment.ts) and each interval's dynamic
+ * rewards are a pure function of (seed, intervalIndex), so they're
+ * recomputed on read rather than persisted. `startedAt` anchors both the
+ * game clock and each place's real opening/closing window for the session.
+ */
+export const gameSessions = pgTable("game_sessions", {
+  id: serial("id").primaryKey(),
+  seed: integer("seed").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  maxTime: real("max_time").notNull(),
+  beamWidth: integer("beam_width").notNull(),
+  rewardDecayMin: real("reward_decay_min").notNull(),
+  rewardIntervalSeconds: integer("reward_interval_seconds").notNull(),
+  status: text("status", { enum: SESSION_STATUS }).notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** One player's independent progress within a game session: own path,
+ * score, current node/time, and decoder memory -- isolated from every other
+ * player in the same session, which only shares the session's clock and
+ * dynamic reward schedule. Mirrors the `runs` persistence pattern so a
+ * stateless serverless request can resume a player's decoder state. */
+export const players = pgTable("players", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id")
+    .notNull()
+    .references(() => gameSessions.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  color: text("color").notNull(),
+  decoderState: jsonb("decoder_state").notNull(),
+  recommendation: jsonb("recommendation").notNull(),
+  path: jsonb("path").notNull().$type<number[]>(),
+  currentNode: integer("current_node").notNull().default(0),
+  currentTime: real("current_time").notNull().default(0),
+  totalReward: real("total_reward").notNull().default(0),
+  status: text("status", { enum: PLAYER_STATUS }).notNull().default("active"),
+  finalTime: real("final_time"),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type GameSession = typeof gameSessions.$inferSelect;
+export type NewGameSession = typeof gameSessions.$inferInsert;
+export type Player = typeof players.$inferSelect;
+export type NewPlayer = typeof players.$inferInsert;

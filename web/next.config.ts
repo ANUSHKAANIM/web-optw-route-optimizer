@@ -25,6 +25,11 @@ const nextConfig: NextConfig = {
     // lose Next's automatic function-sharing and become isolated Lambdas, and
     // more than a couple of those blows past Vercel Hobby's 12-function cap.
     "/api/runs/**": ["./model/**", "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/**"],
+    // Same reasoning as /api/runs/** above, for the multiplayer session
+    // routes -- kept to exactly 2 route files (POST /api/sessions, and the
+    // consolidated /api/sessions/[id] handling GET/POST/PATCH) for the same
+    // function-count-budget reason.
+    "/api/sessions/**": ["./model/**", "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/**"],
   },
   // Pins the workspace root to this app (avoids Next.js misdetecting a
   // package-lock.json elsewhere on disk as the monorepo root).

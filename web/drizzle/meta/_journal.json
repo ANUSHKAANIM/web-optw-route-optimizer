@@ -15,6 +15,13 @@
       "when": 1787781180476,
       "tag": "0001_large_lilith",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790604862440,
+      "tag": "0002_chilly_spectrum",
+      "breakpoints": true
     }
   ]
 }
