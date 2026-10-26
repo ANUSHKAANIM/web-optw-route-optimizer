@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PlayerStatus {
+  ACTIVE
+  FINISHED
+}
+
+/// A shared multiplayer evacuation session. Nodes/edges are NOT stored here
+/// -- they're static data (src/data/evacuation-nodes.ts) shared by every
+/// session; only session-specific configuration and the scenario seed live
+/// in the database. Forecast scenarios are likewise never persisted: each is
+/// a pure function of (seed, forecastIndex), so every player computes an
+/// identical answer without any stored mutable forecast state.
+model GameSession {
+  id                      Int      @id @default(autoincrement())
+  seed                    Int
+  depotNodeId             String
+  totalGameMinutes        Int
+  forecastIntervalSeconds Int
+  startedAt               DateTime @default(now())
+  /// A dev/demo-only knob ("Simulate Next Forecast" button): added on top
+  /// of real elapsed time when computing which forecast scenario is live,
+  /// so a demo doesn't have to wait 9 real hours to show the route reacting
+  /// to a new forecast. Zero in normal play.
+  devTimeOffsetSeconds    Int      @default(0)
+  /// Shared, session-wide running total of how much demand has been
+  /// delivered into the shelter so far -- contested across every player in
+  /// the session, since capacity is one shared pool, not per-player. Only
+  /// ever mutated through an atomic conditional UPDATE (see
+  /// game.repository.ts' tryReserveShelterCapacity) so two players racing to
+  /// fill the last remaining capacity can't both succeed.
+  demandServed            Int      @default(0)
+  status                  String   @default("active")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  players Player[]
+
+  @@map("game_sessions")
+}
+
+/// One player's independent progress within a session -- isolated from
+/// every other player, which only shares the session's clock, forecast
+/// schedule, and the shelter's contested capacity pool.
+model Player {
+  id            Int         @id @default(autoincrement())
+  sessionId     Int
+  session       GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  name          String
+  color         String
+  currentNodeId String
+  elapsedMinutes Float      @default(0)
+  totalReward   Float       @default(0)
+
+  /// Full ordered history of every node visited (string[]), for route
+  /// display and the leaderboard -- never reset. Unlike the earlier
+  /// tourist-game design, an evacuated origin never becomes re-collectible:
+  /// once its demand is served it's permanently done, so there is no
+  /// per-round reset state to track here anymore.
+  path Json
+
+  /// The last replanned route COMMITTED for this team (replan.service.ts),
+  /// cached so an expensive beam-search/baseline recompute isn't repeated
+  /// on every poll. Written only via an optimistic-concurrency conditional
+  /// update keyed on `updatedAt` -- see gameRepository.commitPlayerPlanIfFresh
+  /// -- so a slow, stale plan can never silently overwrite state that moved
+  /// on in the meantime. planScenarioVersion lets a reader tell a plan is
+  /// stale (a newer forecast has since arrived) without needing a push.
+  planRoute           Json?
+  planMethod          String?
+  planScenarioVersion Int?
+  planComputedAt      DateTime?
+
+  status     PlayerStatus @default(ACTIVE)
+  finishedAt DateTime?
+  lastSeenAt DateTime     @default(now())
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([sessionId])
+  @@map("players")
+}

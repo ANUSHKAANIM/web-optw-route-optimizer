@@ -1,22 +1,39 @@
+import random
+import time
+
 import torch
 import torch.optim as optim
 from env import OPTWEnvironment
 from model import PointerNetwork
+
+# Domain randomization: every epoch trains on a freshly generated scenario
+# (a different node count, and -- since env.reset() now randomizes
+# per-batch-element too -- 32 different random instances of that size) so
+# the policy learns general routing/decision-making rather than overfitting
+# one fixed 50-node layout. Range chosen to comfortably cover both today's
+# smaller synthetic instances and the ~80-node real Delhi graph.
+MIN_NODES = 15
+MAX_NODES = 90
+
 
 def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Training on device: {device}")
 
     batch_size = 32
-    num_nodes = 50
-    epochs = 300
+    epochs = 3000
+    checkpoint_every = 300
 
-    env = OPTWEnvironment(num_nodes=num_nodes, batch_size=batch_size, device=device)
     model = PointerNetwork(hidden_dim=128).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
+    running_reward = None
+    start = time.time()
+
     for epoch in range(epochs):
-        static_feats, dynamic_feats = env.reset(same_instance=(epoch > 0))
+        num_nodes = random.randint(MIN_NODES, MAX_NODES)
+        env = OPTWEnvironment(num_nodes=num_nodes, batch_size=batch_size, device=device)
+        static_feats, dynamic_feats = env.reset(same_instance=False)
 
         h_lstm = torch.zeros(batch_size, 128, device=device)
         c_lstm = torch.zeros(batch_size, 128, device=device)
@@ -72,8 +89,20 @@ def train():
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
+        reward_per_node = baseline.item() / num_nodes
+        running_reward = reward_per_node if running_reward is None else 0.98 * running_reward + 0.02 * reward_per_node
+
         if epoch % 10 == 0:
-            print(f"Epoch {epoch:03d} | Avg Score Reward: {baseline.item():.2f} | Loss: {loss.item():.4f}")
+            elapsed = time.time() - start
+            print(
+                f"Epoch {epoch:04d} | N={num_nodes:3d} | Avg Reward: {baseline.item():7.2f} "
+                f"| Reward/Node (EMA): {running_reward:.4f} | Loss: {loss.item():.4f} | {elapsed:.0f}s",
+                flush=True,
+            )
+
+        if epoch > 0 and epoch % checkpoint_every == 0:
+            torch.save(model.state_dict(), "optw_model.pth")
+            print(f"  (checkpoint saved at epoch {epoch})", flush=True)
 
     torch.save(model.to("cpu").state_dict(), "optw_model.pth")
     print("✓ Vectorized training complete. Saved to 'optw_model.pth'")

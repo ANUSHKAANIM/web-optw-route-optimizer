@@ -107,11 +107,21 @@ export function createGeoEnvironment(params: GeoSessionParams): OptwEnvironment 
   return env;
 }
 
-/** Recomputes `env.rewards` / `env.sMax` in place for whichever reward
- * interval contains `nowSecondsSinceStart`, mutating the environment the
- * same way the existing hazard-forecast mode already mutates rewards
- * mid-session. Call this before every read (recommend/step/state query) so
- * each request reflects the current session-wide shared reward snapshot. */
+/** Overwrites `env.rewards` / `env.sMax` in place -- the same mutation the
+ * existing hazard-forecast mode already performs mid-session. Shared by
+ * every reward source (tourist dynamic rewards, the mock forecast provider,
+ * ...) so "how a reward snapshot gets applied to the environment" lives in
+ * exactly one place. */
+export function applyRewards(env: OptwEnvironment, rewards: number[]): void {
+  env.rewards = rewards;
+  env.sMax = Math.max(Math.max(...rewards), 1) * 1.1;
+}
+
+/** Recomputes tourist-mode rewards for whichever interval contains
+ * `nowSecondsSinceStart`. Call this before every read (recommend/step/state
+ * query) so each request reflects the current session-wide shared reward
+ * snapshot. Kept as a thin tourist-specific convenience -- see
+ * lib/env/reward-providers for the mode-agnostic version game.service uses. */
 export function refreshDynamicRewards(
   env: OptwEnvironment,
   seed: number,
@@ -123,6 +133,5 @@ export function refreshDynamicRewards(
   const intervalIndex = rewardIntervalIndex(nowSecondsSinceStart, intervalSeconds);
   const rewards = computeDynamicRewards(baseRewards, seed, intervalIndex);
   rewards[0] = 0;
-  env.rewards = rewards;
-  env.sMax = Math.max(Math.max(...rewards), 1) * 1.1;
+  applyRewards(env, rewards);
 }

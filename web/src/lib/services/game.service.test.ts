@@ -74,4 +74,42 @@ describe("gameService (multiplayer, real ONNX + local DB)", () => {
       gameService.stepPlayer(created.session.id, created.self!.id, infeasibleNode),
     ).rejects.toThrow();
   }, 60_000);
+
+  it("evacuation_sim mode returns a labeled mock forecast risk zone and a genuine baseline route", async () => {
+    const created = await gameService.createSession({
+      maxTime: 8,
+      beamWidth: 8,
+      rewardDecayMin: 0.3,
+      rewardIntervalSeconds: 45,
+      mode: "evacuation_sim",
+      forecastIntervalSeconds: 9 * 3600,
+      playerName: "Dana",
+    });
+
+    expect(created.session.mode).toBe("evacuation_sim");
+    expect(created.forecast).toBeDefined();
+    expect(created.forecast!.riskZone.radiusKm).toBeGreaterThan(0);
+    expect(created.currentRewards[created.depotIndex]).toBe(0);
+
+    const baseline = created.self!.baseline;
+    expect(baseline.path[0]).toBe(created.depotIndex);
+    expect(baseline.path[baseline.path.length - 1]).toBe(created.depotIndex);
+    expect(baseline.totalReward).toBeGreaterThanOrEqual(0);
+
+    // Both players in the same session see the identical shared forecast.
+    const joined = await gameService.joinSession(created.session.id, { playerName: "Eve" });
+    expect(joined.forecast).toEqual(created.forecast);
+  }, 60_000);
+
+  it("tourist mode (default) has no forecast info", async () => {
+    const created = await gameService.createSession({
+      maxTime: 8,
+      beamWidth: 8,
+      rewardDecayMin: 0.3,
+      rewardIntervalSeconds: 45,
+      playerName: "Frank",
+    });
+    expect(created.session.mode).toBe("tourist");
+    expect(created.forecast).toBeUndefined();
+  }, 60_000);
 });

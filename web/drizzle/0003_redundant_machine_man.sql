@@ -1,0 +1,2 @@
+ALTER TABLE "game_sessions" ADD COLUMN "mode" text DEFAULT 'tourist' NOT NULL;--> statement-breakpoint
+ALTER TABLE "game_sessions" ADD COLUMN "forecast_interval_seconds" integer DEFAULT 32400 NOT NULL;

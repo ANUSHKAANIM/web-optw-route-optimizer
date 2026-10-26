@@ -30,9 +30,12 @@ class OPTWEnvironment:
     def reset(self, same_instance=False):
         """Generates problem instances in a single vectorized batch (B, N, ...)."""
         if not same_instance or not hasattr(self, 'coords'):
-            self.coords = torch.rand((1, self.num_nodes, 2), device=self.device) * 2 - 1
-            self.coords = self.coords.expand(self.batch_size, -1, -1).clone()
-            
+            # Each batch element gets its OWN independently random instance
+            # (not one instance broadcast across the batch) -- domain
+            # randomization for training a policy that generalizes across
+            # scenarios rather than overfitting to a single fixed layout.
+            self.coords = torch.rand((self.batch_size, self.num_nodes, 2), device=self.device) * 2 - 1
+
             diff = self.coords.unsqueeze(2) - self.coords.unsqueeze(1)
             self.dist_matrix = torch.norm(diff, dim=-1)
 
@@ -43,6 +46,11 @@ class OPTWEnvironment:
                 # Hazard track: a simulated external threat moving across the
                 # map on its own schedule. Swap this for real forecast
                 # advisory waypoints (time, lat, lon) in the real project.
+                # NOTE: _recompute_hazard_fields() below derives rewards from
+                # self.coords[0] alone, i.e. it still assumes one instance
+                # shared across the batch -- unaffected by the
+                # per-batch-element randomization above only because nothing
+                # currently trains with enable_forecast_events=True.
                 self.track_times = torch.linspace(0, self.max_time, self.forecast_track_waypoints, device=self.device)
                 start = torch.rand(2, device=self.device) * 2 - 1
                 end = torch.rand(2, device=self.device) * 2 - 1
@@ -55,9 +63,10 @@ class OPTWEnvironment:
                 self._recompute_hazard_fields()
             else:
                 self.closing_times = torch.full((self.batch_size, self.num_nodes), self.max_time, device=self.device)
-                rewards_single = torch.randint(1, 10, (1, self.num_nodes), device=self.device, dtype=torch.float32)
-                rewards_single[0, 0] = 0.0
-                self.rewards = rewards_single.expand(self.batch_size, -1).clone()
+                self.rewards = torch.randint(
+                    1, 10, (self.batch_size, self.num_nodes), device=self.device, dtype=torch.float32
+                )
+                self.rewards[:, 0] = 0.0
                 self.S_max = self.rewards.max().item() * 1.1
 
         self.current_node = torch.zeros(self.batch_size, dtype=torch.long, device=self.device)
