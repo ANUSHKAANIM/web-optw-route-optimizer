@@ -50,6 +50,27 @@ Open http://localhost:3000 → Create a run → Click nodes on the map → See l
 
 ---
 
+## 🚀 Deployment
+
+The `web/` app is deployed on Vercel (project `web`, team `anushkas-projects-cfaf755b`).
+
+**Live:** https://web-mu-two-jcjd89kwmw.vercel.app
+
+To deploy a new build to production:
+
+```bash
+cd web
+npx vercel --prod
+```
+
+The directory is already linked via `web/.vercel/project.json` (not committed — see `web/.vercel/README.txt`). If the link is ever lost or points to the wrong team, relink with:
+
+```bash
+npx vercel link --project web --scope anushkas-projects-cfaf755b
+```
+
+---
+
 ## 📁 Project Structure
 
 ```
