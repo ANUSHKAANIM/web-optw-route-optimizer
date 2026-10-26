@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { DEFAULT_REWARD_INTERVAL_SECONDS } from "@/lib/env/dynamic-rewards";
+import { GAME_MODES } from "@/lib/env/reward-providers";
+
+const DEFAULT_FORECAST_INTERVAL_SECONDS = 9 * 3600;
 
 /** Request body for POST /api/sessions. */
 export const createSessionSchema = z.object({
@@ -7,6 +10,8 @@ export const createSessionSchema = z.object({
   beamWidth: z.number().int().min(1).max(64).default(16),
   rewardDecayMin: z.number().min(0).max(1).default(0.3),
   rewardIntervalSeconds: z.number().int().min(10).max(600).default(DEFAULT_REWARD_INTERVAL_SECONDS),
+  mode: z.enum(GAME_MODES).default("tourist"),
+  forecastIntervalSeconds: z.number().int().min(60).max(86400).default(DEFAULT_FORECAST_INTERVAL_SECONDS),
   seed: z.number().int().optional(),
   playerName: z.string().trim().min(1).max(40),
 });

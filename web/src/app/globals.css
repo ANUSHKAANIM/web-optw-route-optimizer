@@ -216,3 +216,22 @@
     scroll-behavior: auto;
   }
 }
+
+/* Neon glow classes for the Delhi map's "command center" theme. Plain CSS,
+   not Tailwind's arbitrary-value syntax: Tailwind statically scans source
+   for complete class-name strings at build time, so a dynamically
+   interpolated class like `drop-shadow-[0_0_5px_${color}]` never actually
+   gets generated -- these named classes are the fix, referenced as whole
+   static strings from the map component. */
+.glow-cyan {
+  filter: drop-shadow(0 0 5px #00f3ff);
+}
+.glow-magenta {
+  filter: drop-shadow(0 0 7px #ff0055);
+}
+.glow-green {
+  filter: drop-shadow(0 0 5px #22c55e);
+}
+.glow-magenta-strong {
+  filter: drop-shadow(0 0 10px #ff0055);
+}

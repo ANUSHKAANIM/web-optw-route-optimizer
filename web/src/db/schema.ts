@@ -64,6 +64,9 @@ export type SessionStatus = (typeof SESSION_STATUS)[number];
 export const PLAYER_STATUS = ["active", "finished"] as const;
 export type PlayerStatus = (typeof PLAYER_STATUS)[number];
 
+export const GAME_MODE = ["tourist", "evacuation_sim"] as const;
+export type GameMode = (typeof GAME_MODE)[number];
+
 /**
  * A shared multiplayer Delhi orienteering game. Unlike `runs`, this table
  * stores no environment snapshot: the ~80-place graph and travel-time matrix
@@ -80,6 +83,13 @@ export const gameSessions = pgTable("game_sessions", {
   beamWidth: integer("beam_width").notNull(),
   rewardDecayMin: real("reward_decay_min").notNull(),
   rewardIntervalSeconds: integer("reward_interval_seconds").notNull(),
+  /** "tourist" (default): today's attraction-value rewards. "evacuation_sim":
+   * a MOCK forecast-driven priority scenario, regenerated every
+   * forecastIntervalSeconds -- a prototype of a future real cyclone-risk
+   * feed. Selects which RewardProvider (lib/env/reward-providers) the
+   * session uses; everything else (graph, optimizer, multiplayer) is shared. */
+  mode: text("mode", { enum: GAME_MODE }).notNull().default("tourist"),
+  forecastIntervalSeconds: integer("forecast_interval_seconds").notNull().default(9 * 3600),
   status: text("status", { enum: SESSION_STATUS }).notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

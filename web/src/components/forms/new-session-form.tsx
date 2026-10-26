@@ -4,12 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, Users } from "lucide-react";
+import { AlertTriangle, Loader2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiClient } from "@/lib/api-client";
+import type { GameMode } from "@/lib/env/reward-providers";
 
 export function NewSessionForm() {
   const router = useRouter();
@@ -17,6 +19,7 @@ export function NewSessionForm() {
   const [playerName, setPlayerName] = useState("");
   const [maxTime, setMaxTime] = useState(10);
   const [beamWidth, setBeamWidth] = useState(16);
+  const [mode, setMode] = useState<GameMode>("tourist");
 
   const [joinId, setJoinId] = useState("");
   const [joinName, setJoinName] = useState("");
@@ -40,6 +43,8 @@ export function NewSessionForm() {
         beamWidth,
         rewardDecayMin: 0.3,
         rewardIntervalSeconds: 45,
+        mode,
+        forecastIntervalSeconds: 9 * 3600,
       }),
     onSuccess: goToSession,
     onError: (error: Error) => toast.error("Couldn't create session", { description: error.message }),
@@ -94,6 +99,24 @@ export function NewSessionForm() {
                 onChange={(e) => setBeamWidth(Number(e.target.value))}
               />
             </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/40 p-3">
+            <div>
+              <Label htmlFor="evac-mode" className="flex items-center gap-1.5">
+                <AlertTriangle className="size-3.5 text-amber-500" />
+                Evacuation Simulation Mode
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Rewards become a MOCK forecast risk zone (not real weather data) that shifts every 9h
+                instead of tourist attraction value. A prototype of a future real evacuation optimizer.
+              </p>
+            </div>
+            <Switch
+              id="evac-mode"
+              checked={mode === "evacuation_sim"}
+              onCheckedChange={(checked) => setMode(checked ? "evacuation_sim" : "tourist")}
+            />
           </div>
         </CardContent>
         <CardFooter>

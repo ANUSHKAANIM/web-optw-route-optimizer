@@ -1,16 +1,13 @@
 import type { OptwEnvironment } from "@/lib/env/optw-environment";
-import {
-  createGeoEnvironment,
-  orderedGeoPlaces,
-  refreshDynamicRewards,
-} from "@/lib/env/geo-environment";
-import { computeDynamicRewards, rewardIntervalIndex, secondsUntilNextRewardUpdate } from "@/lib/env/dynamic-rewards";
+import { applyRewards, createGeoEnvironment, orderedGeoPlaces } from "@/lib/env/geo-environment";
 import { createSeed } from "@/lib/env/rng";
+import { rewardProviderForMode, type ForecastInfo, type GameMode, type RewardContext } from "@/lib/env/reward-providers";
 import { getDelhiVisualGraph } from "@/lib/geo/delhi-graph";
 import { initialDecoderState } from "@/lib/services/inference.service";
 import { restoreDecoderState, snapshotDecoderState } from "@/lib/services/decoder-state-serialization";
 import { applyChosenAction, optimizerService } from "@/lib/services/optimizer.service.impl";
-import type { RecommendationResult } from "@/lib/services/optimizer.service";
+import { baselineHeuristicSearch } from "@/lib/services/baseline-optimizer";
+import type { RecommendationResult, RouteResult } from "@/lib/services/optimizer.service";
 import { gameRepository } from "@/lib/repositories/game.repository";
 import {
   InfeasibleActionError,
@@ -50,6 +47,9 @@ export interface PlayerSummary {
 export interface PlayerDetail extends PlayerSummary {
   path: number[];
   recommendation: RecommendationResult;
+  /** Non-ML greedy reward-density route from the player's current position --
+   * a genuine traditional-optimizer comparison for the neural recommendation. */
+  baseline: RouteResult;
 }
 
 export interface SessionView {
@@ -58,6 +58,8 @@ export interface SessionView {
     maxTime: number;
     beamWidth: number;
     rewardIntervalSeconds: number;
+    mode: GameMode;
+    forecastIntervalSeconds: number;
     status: "active" | "ended";
     startedAt: string;
   };
@@ -66,6 +68,9 @@ export interface SessionView {
   depotIndex: number;
   currentRewards: number[];
   secondsUntilNextRewardUpdate: number;
+  /** Present only in evacuation_sim mode -- the current MOCK forecast
+   * scenario and its risk zone geometry, for the map overlay + forecast panel. */
+  forecast?: ForecastInfo;
   players: PlayerSummary[];
   self?: PlayerDetail;
 }
@@ -78,12 +83,28 @@ function secondsSinceStart(session: GameSession): number {
   return Math.max(0, (Date.now() - new Date(session.startedAt).getTime()) / 1000);
 }
 
+/** The interval (tourist reward cadence, or mock-forecast cadence) that
+ * actually applies to this session, based on its mode. */
+function activeIntervalSeconds(session: GameSession): number {
+  return session.mode === "evacuation_sim" ? session.forecastIntervalSeconds : session.rewardIntervalSeconds;
+}
+
+function buildRewardContext(session: GameSession): RewardContext {
+  return {
+    seed: session.seed,
+    startedAt: new Date(session.startedAt),
+    secondsSinceStart: secondsSinceStart(session),
+    intervalSeconds: activeIntervalSeconds(session),
+    places: orderedGeoPlaces(),
+  };
+}
+
 /** Reconstructs this player's environment from the session's static config
  * plus their own small persisted state (path/currentNode/currentTime),
- * refreshed with whatever reward interval is live right now. All players in
- * a session share identical coords/distances/opening-hours; only the
- * dynamic rewards (a function of wall-clock time) and each player's own
- * position/visited-set differ. */
+ * refreshed with whatever reward snapshot (tourist or mock-forecast) is
+ * live right now. All players in a session share identical
+ * coords/distances/opening-hours; only the reward snapshot (a function of
+ * wall-clock time) and each player's own position/visited-set differ. */
 function buildPlayerEnvironment(session: GameSession, player: Player): OptwEnvironment {
   const env = createGeoEnvironment({
     seed: session.seed,
@@ -99,7 +120,9 @@ function buildPlayerEnvironment(session: GameSession, player: Player): OptwEnvir
   env.currentNode = player.currentNode;
   env.currentTime = player.currentTime;
 
-  refreshDynamicRewards(env, session.seed, secondsSinceStart(session), session.rewardIntervalSeconds);
+  const provider = rewardProviderForMode(session.mode);
+  const snapshot = provider.getRewards(buildRewardContext(session));
+  applyRewards(env, snapshot.rewards);
   return env;
 }
 
@@ -117,23 +140,21 @@ function toPlayerSummary(p: Player): PlayerSummary {
   };
 }
 
-function toPlayerDetail(p: Player): PlayerDetail {
+function toPlayerDetail(session: GameSession, p: Player): PlayerDetail {
+  const env = buildPlayerEnvironment(session, p);
   return {
     ...toPlayerSummary(p),
     path: p.path as number[],
     recommendation: p.recommendation as RecommendationResult,
+    baseline: baselineHeuristicSearch(env),
   };
 }
 
 function toSessionView(session: GameSession, allPlayers: Player[], selfPlayerId?: number): SessionView {
   const places = orderedGeoPlaces();
-  const nowSeconds = secondsSinceStart(session);
-  const rewards = computeDynamicRewards(
-    places.map((p) => p.baseReward),
-    session.seed,
-    rewardIntervalIndex(nowSeconds, session.rewardIntervalSeconds),
-  );
-  rewards[0] = 0;
+  const provider = rewardProviderForMode(session.mode);
+  const ctx = buildRewardContext(session);
+  const snapshot = provider.getRewards(ctx);
   const { edges } = getDelhiVisualGraph();
   const self = selfPlayerId !== undefined ? allPlayers.find((p) => p.id === selfPlayerId) : undefined;
 
@@ -143,6 +164,8 @@ function toSessionView(session: GameSession, allPlayers: Player[], selfPlayerId?
       maxTime: session.maxTime,
       beamWidth: session.beamWidth,
       rewardIntervalSeconds: session.rewardIntervalSeconds,
+      mode: session.mode,
+      forecastIntervalSeconds: session.forecastIntervalSeconds,
       status: session.status,
       startedAt: new Date(session.startedAt).toISOString(),
     },
@@ -157,10 +180,11 @@ function toSessionView(session: GameSession, allPlayers: Player[], selfPlayerId?
     })),
     graphEdges: edges,
     depotIndex: 0,
-    currentRewards: rewards,
-    secondsUntilNextRewardUpdate: secondsUntilNextRewardUpdate(nowSeconds, session.rewardIntervalSeconds),
+    currentRewards: snapshot.rewards,
+    secondsUntilNextRewardUpdate: provider.secondsUntilNextUpdate(ctx),
+    forecast: snapshot.forecast,
     players: allPlayers.map(toPlayerSummary),
-    self: self ? toPlayerDetail(self) : undefined,
+    self: self ? toPlayerDetail(session, self) : undefined,
   };
 }
 
@@ -174,7 +198,8 @@ async function createPlayerInternal(session: GameSession, name: string, colorInd
     rewardDecayMin: session.rewardDecayMin,
     rewardIntervalSeconds: session.rewardIntervalSeconds,
   });
-  refreshDynamicRewards(env, session.seed, secondsSinceStart(session), session.rewardIntervalSeconds);
+  const provider = rewardProviderForMode(session.mode);
+  applyRewards(env, provider.getRewards(buildRewardContext(session)).rewards);
 
   const { recommendation, advancedDecoderState } = await optimizerService.recommend(
     env,
@@ -208,6 +233,8 @@ async function createSession(request: CreateSessionRequest): Promise<SessionView
     beamWidth: request.beamWidth,
     rewardDecayMin: request.rewardDecayMin,
     rewardIntervalSeconds: request.rewardIntervalSeconds,
+    mode: request.mode,
+    forecastIntervalSeconds: request.forecastIntervalSeconds,
     status: "active",
   });
 
@@ -216,25 +243,32 @@ async function createSession(request: CreateSessionRequest): Promise<SessionView
 }
 
 async function joinSession(sessionId: number, request: JoinSessionRequest): Promise<SessionView> {
-  const session = await gameRepository.findSessionById(sessionId);
+  const [session, existing] = await Promise.all([
+    gameRepository.findSessionById(sessionId),
+    gameRepository.listPlayers(sessionId),
+  ]);
   if (session.status === "ended") throw new SessionEndedError(sessionId);
 
-  const existing = await gameRepository.listPlayers(sessionId);
   const player = await createPlayerInternal(session, request.playerName, existing.length);
   return toSessionView(session, [...existing, player], player.id);
 }
 
 async function getSessionView(sessionId: number, playerId?: number): Promise<SessionView> {
-  const session = await gameRepository.findSessionById(sessionId);
-  const allPlayers = await gameRepository.listPlayers(sessionId);
+  // Independent reads -- run as one round trip instead of two sequential ones.
+  const [session, allPlayers] = await Promise.all([
+    gameRepository.findSessionById(sessionId),
+    gameRepository.listPlayers(sessionId),
+  ]);
   return toSessionView(session, allPlayers, playerId);
 }
 
 async function stepPlayer(sessionId: number, playerId: number, node: number): Promise<SessionView> {
-  const session = await gameRepository.findSessionById(sessionId);
+  // Independent reads -- run as one round trip instead of two sequential ones.
+  const [session, player] = await Promise.all([
+    gameRepository.findSessionById(sessionId),
+    gameRepository.findPlayerById(sessionId, playerId),
+  ]);
   if (session.status === "ended") throw new SessionEndedError(sessionId);
-
-  const player = await gameRepository.findPlayerById(sessionId, playerId);
   if (player.status === "finished") throw new PlayerAlreadyFinishedError(playerId);
 
   const env = buildPlayerEnvironment(session, player);
@@ -282,8 +316,10 @@ async function stepPlayer(sessionId: number, playerId: number, node: number): Pr
 }
 
 async function endPlayer(sessionId: number, playerId: number): Promise<SessionView> {
-  const session = await gameRepository.findSessionById(sessionId);
-  const player = await gameRepository.findPlayerById(sessionId, playerId);
+  const [session, player] = await Promise.all([
+    gameRepository.findSessionById(sessionId),
+    gameRepository.findPlayerById(sessionId, playerId),
+  ]);
 
   if (player.status !== "finished") {
     const env = buildPlayerEnvironment(session, player);

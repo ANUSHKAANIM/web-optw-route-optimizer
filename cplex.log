@@ -1,0 +1,153 @@
+
+Log started (V22.1.2.0) Tue Oct 27 00:53:41 2026
+
+
+Log started (V22.1.2.0) Tue Oct 27 00:53:55 2026
+
+
+Problem 'C:/Users/LENOVO/AppData/Local/Temp/claude/c--Users-LENOVO-Desktop-optw-reinforce---test/908a8930-bc66-45d2-b71e-9eaf3044fe8e/scratchpad/big_test.lp' read.
+Read time = 0.01 sec. (0.11 ticks)
+Version identifier: 22.1.2.0 | 2024-11-25 | 0edbb82fd
+Tried aggregator 1 time.
+LP Presolve eliminated 0 rows and 299 columns.
+Reduced LP has 1200 rows, 1201 columns, and 2400 nonzeros.
+Presolve time = 0.02 sec. (1.09 ticks)
+Symmetry aggregator did 1200 additional substitutions.
+
+Iteration log . . .
+Iteration:     1   Dual objective     =          1499.000000
+Iteration:   128   Dual objective     =          1373.000000
+Iteration:   260   Dual objective     =          1241.000000
+
+Dual crossover.
+  Dual:  Fixed no variables.
+  Primal:  Fixed no variables.
+
+Dual simplex - Optimal:  Objective =  1.2000000000e+03
+Solution time =    0.03 sec.  Iterations = 301 (0)
+Deterministic time = 3.41 ticks  (109.93 ticks/sec)
+
+
+Log started (V22.1.2.0) Tue Oct 27 00:54:40 2026
+
+
+Problem 'C:/Users/LENOVO/AppData/Local/Temp/claude/c--Users-LENOVO-Desktop-optw-reinforce---test/908a8930-bc66-45d2-b71e-9eaf3044fe8e/scratchpad/big_test.lp' read.
+Read time = 0.02 sec. (0.11 ticks)
+Version identifier: 22.1.2.0 | 2024-11-25 | 0edbb82fd
+Tried aggregator 1 time.
+LP Presolve eliminated 0 rows and 299 columns.
+Reduced LP has 1200 rows, 1201 columns, and 2400 nonzeros.
+Presolve time = 0.00 sec. (1.09 ticks)
+Symmetry aggregator did 1200 additional substitutions.
+
+Iteration log . . .
+Iteration:     1   Dual objective     =          1499.000000
+Iteration:   128   Dual objective     =          1373.000000
+Iteration:   260   Dual objective     =          1241.000000
+
+Dual crossover.
+  Dual:  Fixed no variables.
+  Primal:  Fixed no variables.
+
+Dual simplex - Optimal:  Objective =  1.2000000000e+03
+Solution time =    0.00 sec.  Iterations = 301 (0)
+Deterministic time = 3.41 ticks  (3407.74 ticks/sec)
+
+
+Log started (V22.1.2.0) Tue Oct 27 00:54:58 2026
+
+
+Problem 'C:/Users/LENOVO/AppData/Local/Temp/claude/c--Users-LENOVO-Desktop-optw-reinforce---test/908a8930-bc66-45d2-b71e-9eaf3044fe8e/scratchpad/big_test.lp' read.
+Read time = 0.01 sec. (0.11 ticks)
+Version identifier: 22.1.2.0 | 2024-11-25 | 0edbb82fd
+Tried aggregator 1 time.
+LP Presolve eliminated 0 rows and 299 columns.
+Reduced LP has 1200 rows, 1201 columns, and 2400 nonzeros.
+Presolve time = 0.00 sec. (1.09 ticks)
+Symmetry aggregator did 1200 additional substitutions.
+
+Iteration log . . .
+Iteration:     1   Dual objective     =          1499.000000
+Iteration:   128   Dual objective     =          1373.000000
+Iteration:   260   Dual objective     =          1241.000000
+
+Dual crossover.
+  Dual:  Fixed no variables.
+  Primal:  Fixed no variables.
+
+Dual simplex - Optimal:  Objective =  1.2000000000e+03
+Solution time =    0.00 sec.  Iterations = 301 (0)
+Deterministic time = 3.41 ticks  (3407.74 ticks/sec)
+
+
+Solution written to file 'C:/Users/LENOVO/AppData/Local/Temp/claude/c--Users-LENOVO-Desktop-optw-reinforce---test/908a8930-bc66-45d2-b71e-9eaf3044fe8e/scratchpad/big_test.sol'.
+
+Log started (V22.1.2.0) Tue Oct 27 00:55:22 2026
+
+
+Problem 'C:/Users/LENOVO/AppData/Local/Temp/claude/c--Users-LENOVO-Desktop-optw-reinforce---test/908a8930-bc66-45d2-b71e-9eaf3044fe8e/scratchpad/big_milp.lp' read.
+Read time = 0.02 sec. (0.11 ticks)
+New value for time limit in seconds: 15
+New value for mixed integer optimality gap tolerance: 0.01
+Version identifier: 22.1.2.0 | 2024-11-25 | 0edbb82fd
+CPXPARAM_TimeLimit                               15
+CPXPARAM_MIP_Tolerances_MIPGap                   0.01
+Found incumbent of value 0.000000 after 0.00 sec. (0.04 ticks)
+Tried aggregator 368 times.
+MIP Presolve eliminated 366 rows and 766 columns.
+Aggregator did 734 substitutions.
+All rows and columns eliminated.
+Presolve time = 0.19 sec. (122.05 ticks)
+
+Root node processing (before b&c):
+  Real time             =    0.19 sec. (122.18 ticks)
+Parallel b&c, 16 threads:
+  Real time             =    0.00 sec. (0.00 ticks)
+  Sync time (average)   =    0.00 sec.
+  Wait time (average)   =    0.00 sec.
+                          ------------
+Total (root+branch&cut) =    0.19 sec. (122.18 ticks)
+
+Solution pool: 2 solutions saved.
+
+MIP - Integer optimal solution:  Objective =  5.2610000000e+03
+Solution time =    0.20 sec.  Iterations = 0  Nodes = 0 (1)
+Deterministic time = 122.19 ticks  (601.91 ticks/sec)
+
+
+Incumbent solution written to file 'C:/Users/LENOVO/AppData/Local/Temp/claude/c--Users-LENOVO-Desktop-optw-reinforce---test/908a8930-bc66-45d2-b71e-9eaf3044fe8e/scratchpad/big_milp.sol'.
+
+Log started (V22.1.2.0) Tue Oct 27 00:56:14 2026
+
+
+Problem 'C:/Users/LENOVO/AppData/Local/Temp/claude/c--Users-LENOVO-Desktop-optw-reinforce---test/908a8930-bc66-45d2-b71e-9eaf3044fe8e/scratchpad/big_milp.lp' read.
+Read time = 0.02 sec. (0.11 ticks)
+New value for time limit in seconds: 15
+New value for mixed integer optimality gap tolerance: 0.01
+Version identifier: 22.1.2.0 | 2024-11-25 | 0edbb82fd
+CPXPARAM_TimeLimit                               15
+CPXPARAM_MIP_Tolerances_MIPGap                   0.01
+Found incumbent of value 0.000000 after 0.00 sec. (0.04 ticks)
+Tried aggregator 368 times.
+MIP Presolve eliminated 366 rows and 766 columns.
+Aggregator did 734 substitutions.
+All rows and columns eliminated.
+Presolve time = 0.20 sec. (122.05 ticks)
+
+Root node processing (before b&c):
+  Real time             =    0.20 sec. (122.18 ticks)
+Parallel b&c, 16 threads:
+  Real time             =    0.00 sec. (0.00 ticks)
+  Sync time (average)   =    0.00 sec.
+  Wait time (average)   =    0.00 sec.
+                          ------------
+Total (root+branch&cut) =    0.20 sec. (122.18 ticks)
+
+Solution pool: 2 solutions saved.
+
+MIP - Integer optimal solution:  Objective =  5.2610000000e+03
+Solution time =    0.20 sec.  Iterations = 0  Nodes = 0 (1)
+Deterministic time = 122.19 ticks  (601.91 ticks/sec)
+
+
+Incumbent solution written to file 'C:\Users\LENOVO\AppData\Local\Temp\tmpfnaeo5d3.sol'.

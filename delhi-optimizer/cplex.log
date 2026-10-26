@@ -1,0 +1,520 @@
+
+Log started (V22.1.2.0) Tue Oct 27 00:56:47 2026
+
+
+Problem 'C:\Users\LENOVO\AppData\Local\Temp\delhi-optimizer-cplex-zmarfk\model.lp' read.
+Read time = 0.01 sec. (0.03 ticks)
+New value for time limit in seconds: 15
+New value for mixed integer optimality gap tolerance: 0.01
+Version identifier: 22.1.2.0 | 2024-11-25 | 0edbb82fd
+CPXPARAM_TimeLimit                               15
+CPXPARAM_MIP_Tolerances_MIPGap                   0.01
+Found incumbent of value 0.000000 after 0.00 sec. (0.02 ticks)
+Tried aggregator 1 time.
+MIP Presolve eliminated 37 rows and 2 columns.
+MIP Presolve modified 327 coefficients.
+Reduced MIP has 184 rows, 169 columns, and 1048 nonzeros.
+Reduced MIP has 157 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.02 sec. (0.90 ticks)
+Probing time = 0.00 sec. (0.44 ticks)
+Tried aggregator 1 time.
+Detecting symmetries...
+Reduced MIP has 184 rows, 169 columns, and 1048 nonzeros.
+Reduced MIP has 157 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.00 sec. (0.66 ticks)
+Probing time = 0.00 sec. (0.46 ticks)
+Clique table members: 80.
+MIP emphasis: balance optimality and feasibility.
+MIP search method: dynamic search.
+Parallel mode: deterministic, using up to 16 threads.
+Root relaxation solution time = 0.01 sec. (0.96 ticks)
+
+        Nodes                                         Cuts/
+   Node  Left     Objective  IInf  Best Integer    Best Bound    ItCnt     Gap
+
+*     0+    0                            0.0000    28980.0000              --- 
+      0     0     1400.0000    24        0.0000     1400.0000      149     --- 
+*     0+    0                         1350.0000     1400.0000             3.70%
+      0     0     1400.0000     8     1350.0000       Cuts: 6      156    3.70%
+      0     0     1400.0000     8     1350.0000      Cuts: 30      175    3.70%
+      0     0     1400.0000    12     1350.0000      Cuts: 12      204    3.70%
+*     0+    0                         1390.0000     1400.0000             0.72%
+*     0+    0                         1395.0000     1400.0000             0.36%
+
+Implied bound cuts applied:  15
+Mixed integer rounding cuts applied:  1
+
+Root node processing (before b&c):
+  Real time             =    0.17 sec. (12.17 ticks)
+Parallel b&c, 16 threads:
+  Real time             =    0.00 sec. (0.00 ticks)
+  Sync time (average)   =    0.00 sec.
+  Wait time (average)   =    0.00 sec.
+                          ------------
+Total (root+branch&cut) =    0.17 sec. (12.17 ticks)
+
+Solution pool: 4 solutions saved.
+
+MIP - Integer optimal, tolerance (0.01/1e-06):  Objective =  1.3950000000e+03
+Current MIP best bound =  1.4000000000e+03 (gap = 5, 0.36%)
+Solution time =    0.17 sec.  Iterations = 204  Nodes = 0 (1)
+Deterministic time = 12.17 ticks  (70.76 ticks/sec)
+
+
+Incumbent solution written to file 'C:\Users\LENOVO\AppData\Local\Temp\tmpqkje9eks.sol'.
+
+Log started (V22.1.2.0) Tue Oct 27 00:56:48 2026
+
+
+Problem 'C:\Users\LENOVO\AppData\Local\Temp\delhi-optimizer-cplex-tbNkJ9\model.lp' read.
+Read time = 0.01 sec. (0.03 ticks)
+New value for time limit in seconds: 15
+New value for mixed integer optimality gap tolerance: 0.01
+Version identifier: 22.1.2.0 | 2024-11-25 | 0edbb82fd
+CPXPARAM_TimeLimit                               15
+CPXPARAM_MIP_Tolerances_MIPGap                   0.01
+Found incumbent of value 0.000000 after 0.00 sec. (0.02 ticks)
+Tried aggregator 1 time.
+MIP Presolve eliminated 37 rows and 2 columns.
+MIP Presolve modified 327 coefficients.
+Reduced MIP has 184 rows, 169 columns, and 1048 nonzeros.
+Reduced MIP has 157 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.00 sec. (0.90 ticks)
+Probing time = 0.00 sec. (0.44 ticks)
+Tried aggregator 1 time.
+Detecting symmetries...
+Reduced MIP has 184 rows, 169 columns, and 1048 nonzeros.
+Reduced MIP has 157 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.00 sec. (0.66 ticks)
+Probing time = 0.00 sec. (0.46 ticks)
+Clique table members: 80.
+MIP emphasis: balance optimality and feasibility.
+MIP search method: dynamic search.
+Parallel mode: deterministic, using up to 16 threads.
+Root relaxation solution time = 0.00 sec. (0.96 ticks)
+
+        Nodes                                         Cuts/
+   Node  Left     Objective  IInf  Best Integer    Best Bound    ItCnt     Gap
+
+*     0+    0                            0.0000    28980.0000              --- 
+      0     0     1400.0000    24        0.0000     1400.0000      149     --- 
+*     0+    0                         1350.0000     1400.0000             3.70%
+      0     0     1400.0000     8     1350.0000       Cuts: 6      156    3.70%
+      0     0     1400.0000     8     1350.0000      Cuts: 30      175    3.70%
+      0     0     1400.0000    12     1350.0000      Cuts: 12      204    3.70%
+*     0+    0                         1390.0000     1400.0000             0.72%
+*     0+    0                         1395.0000     1400.0000             0.36%
+
+Implied bound cuts applied:  15
+Mixed integer rounding cuts applied:  1
+
+Root node processing (before b&c):
+  Real time             =    0.16 sec. (12.17 ticks)
+Parallel b&c, 16 threads:
+  Real time             =    0.00 sec. (0.00 ticks)
+  Sync time (average)   =    0.00 sec.
+  Wait time (average)   =    0.00 sec.
+                          ------------
+Total (root+branch&cut) =    0.16 sec. (12.17 ticks)
+
+Solution pool: 4 solutions saved.
+
+MIP - Integer optimal, tolerance (0.01/1e-06):  Objective =  1.3950000000e+03
+Current MIP best bound =  1.4000000000e+03 (gap = 5, 0.36%)
+Solution time =    0.16 sec.  Iterations = 204  Nodes = 0 (1)
+Deterministic time = 12.17 ticks  (77.52 ticks/sec)
+
+
+Incumbent solution written to file 'C:\Users\LENOVO\AppData\Local\Temp\tmp8597us_k.sol'.
+
+Log started (V22.1.2.0) Tue Oct 27 00:56:49 2026
+
+
+Problem 'C:\Users\LENOVO\AppData\Local\Temp\delhi-optimizer-cplex-ENfhHr\model.lp' read.
+Read time = 0.00 sec. (0.06 ticks)
+New value for time limit in seconds: 15
+New value for mixed integer optimality gap tolerance: 0.01
+Version identifier: 22.1.2.0 | 2024-11-25 | 0edbb82fd
+CPXPARAM_TimeLimit                               15
+CPXPARAM_MIP_Tolerances_MIPGap                   0.01
+Found incumbent of value 0.000000 after 0.00 sec. (0.05 ticks)
+Tried aggregator 1 time.
+MIP Presolve eliminated 74 rows and 4 columns.
+MIP Presolve modified 631 coefficients.
+Reduced MIP has 355 rows, 338 columns, and 2118 nonzeros.
+Reduced MIP has 314 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.01 sec. (1.51 ticks)
+Probing time = 0.00 sec. (1.82 ticks)
+Tried aggregator 1 time.
+Detecting symmetries...
+Reduced MIP has 355 rows, 338 columns, and 2118 nonzeros.
+Reduced MIP has 314 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.00 sec. (1.52 ticks)
+Probing time = 0.00 sec. (1.85 ticks)
+Clique table members: 1301.
+MIP emphasis: balance optimality and feasibility.
+MIP search method: dynamic search.
+Parallel mode: deterministic, using up to 16 threads.
+Root relaxation solution time = 0.02 sec. (1.63 ticks)
+
+        Nodes                                         Cuts/
+   Node  Left     Objective  IInf  Best Integer    Best Bound    ItCnt     Gap
+
+*     0+    0                            0.0000    57960.0000              --- 
+      0     0     1400.0000    25        0.0000     1400.0000      129     --- 
+      0     0     1400.0000    10        0.0000      Cuts: 10      146     --- 
+*     0+    0                          890.0000     1400.0000            57.30%
+      0     0     1400.0000     5      890.0000      Cuts: 19      167   57.30%
+      0     0     1400.0000    12      890.0000      Cuts: 15      192   57.30%
+      0     0     1400.0000     2      890.0000       Cuts: 8      201   57.30%
+*     0+    0                         1255.0000     1400.0000            11.55%
+      0     0     1400.0000     8     1255.0000       Cuts: 6      218   11.55%
+*     0+    0                         1395.0000     1400.0000             0.36%
+
+GUB cover cuts applied:  1
+Implied bound cuts applied:  23
+Mixed integer rounding cuts applied:  2
+
+Root node processing (before b&c):
+  Real time             =    0.17 sec. (29.05 ticks)
+Parallel b&c, 16 threads:
+  Real time             =    0.00 sec. (0.00 ticks)
+  Sync time (average)   =    0.00 sec.
+  Wait time (average)   =    0.00 sec.
+                          ------------
+Total (root+branch&cut) =    0.17 sec. (29.05 ticks)
+
+Solution pool: 4 solutions saved.
+
+MIP - Integer optimal, tolerance (0.01/1e-06):  Objective =  1.3950000000e+03
+Current MIP best bound =  1.4000000000e+03 (gap = 5, 0.36%)
+Solution time =    0.19 sec.  Iterations = 218  Nodes = 0 (1)
+Deterministic time = 29.05 ticks  (155.37 ticks/sec)
+
+
+Incumbent solution written to file 'C:\Users\LENOVO\AppData\Local\Temp\tmpmhjuzfb0.sol'.
+
+Log started (V22.1.2.0) Tue Oct 27 00:56:53 2026
+
+
+Problem 'C:\Users\LENOVO\AppData\Local\Temp\delhi-optimizer-cplex-ZdE4Of\model.lp' read.
+Read time = 0.00 sec. (0.03 ticks)
+New value for time limit in seconds: 15
+New value for mixed integer optimality gap tolerance: 0.01
+Version identifier: 22.1.2.0 | 2024-11-25 | 0edbb82fd
+CPXPARAM_TimeLimit                               15
+CPXPARAM_MIP_Tolerances_MIPGap                   0.01
+Found incumbent of value 0.000000 after 0.00 sec. (0.02 ticks)
+Tried aggregator 1 time.
+MIP Presolve eliminated 38 rows and 2 columns.
+MIP Presolve modified 313 coefficients.
+Reduced MIP has 183 rows, 169 columns, and 1046 nonzeros.
+Reduced MIP has 157 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.00 sec. (0.76 ticks)
+Probing time = 0.00 sec. (0.44 ticks)
+Tried aggregator 1 time.
+Detecting symmetries...
+Reduced MIP has 183 rows, 169 columns, and 1046 nonzeros.
+Reduced MIP has 157 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.00 sec. (0.66 ticks)
+Probing time = 0.00 sec. (0.46 ticks)
+Clique table members: 80.
+MIP emphasis: balance optimality and feasibility.
+MIP search method: dynamic search.
+Parallel mode: deterministic, using up to 16 threads.
+Root relaxation solution time = 0.00 sec. (0.96 ticks)
+
+        Nodes                                         Cuts/
+   Node  Left     Objective  IInf  Best Integer    Best Bound    ItCnt     Gap
+
+*     0+    0                            0.0000    28980.0000              --- 
+      0     0     1400.0000    21        0.0000     1400.0000      149     --- 
+      0     0     1400.0000     8        0.0000       Cuts: 7      162     --- 
+      0     0     1400.0000    10        0.0000      Cuts: 26      179     --- 
+*     0+    0                          930.0000     1400.0000            50.54%
+      0     0     1400.0000    12      930.0000    GUBcuts: 1      187   50.54%
+*     0+    0                         1400.0000     1400.0000             0.00%
+      0     0        cutoff           1400.0000     1400.0000      187    0.00%
+Elapsed time = 0.16 sec. (15.60 ticks, tree = 0.01 MB, solutions = 2)
+
+Implied bound cuts applied:  5
+Flow cuts applied:  1
+Mixed integer rounding cuts applied:  1
+
+Root node processing (before b&c):
+  Real time             =    0.16 sec. (15.61 ticks)
+Parallel b&c, 16 threads:
+  Real time             =    0.00 sec. (0.00 ticks)
+  Sync time (average)   =    0.00 sec.
+  Wait time (average)   =    0.00 sec.
+                          ------------
+Total (root+branch&cut) =    0.16 sec. (15.61 ticks)
+
+Solution pool: 3 solutions saved.
+
+MIP - Integer optimal solution:  Objective =  1.4000000000e+03
+Solution time =    0.17 sec.  Iterations = 187  Nodes = 0
+Deterministic time = 15.61 ticks  (91.27 ticks/sec)
+
+
+Incumbent solution written to file 'C:\Users\LENOVO\AppData\Local\Temp\tmpycsuevwq.sol'.
+
+Log started (V22.1.2.0) Tue Oct 27 01:00:26 2026
+
+
+Problem 'C:\Users\LENOVO\AppData\Local\Temp\delhi-optimizer-cplex-rcn7fA\model.lp' read.
+Read time = 0.02 sec. (0.03 ticks)
+New value for time limit in seconds: 15
+New value for mixed integer optimality gap tolerance: 0.01
+Version identifier: 22.1.2.0 | 2024-11-25 | 0edbb82fd
+CPXPARAM_TimeLimit                               15
+CPXPARAM_MIP_Tolerances_MIPGap                   0.01
+Found incumbent of value 0.000000 after 0.00 sec. (0.02 ticks)
+Tried aggregator 1 time.
+MIP Presolve eliminated 37 rows and 2 columns.
+MIP Presolve modified 327 coefficients.
+Reduced MIP has 184 rows, 169 columns, and 1048 nonzeros.
+Reduced MIP has 157 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.00 sec. (0.90 ticks)
+Probing time = 0.00 sec. (0.44 ticks)
+Tried aggregator 1 time.
+Detecting symmetries...
+Reduced MIP has 184 rows, 169 columns, and 1048 nonzeros.
+Reduced MIP has 157 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.00 sec. (0.66 ticks)
+Probing time = 0.00 sec. (0.46 ticks)
+Clique table members: 80.
+MIP emphasis: balance optimality and feasibility.
+MIP search method: dynamic search.
+Parallel mode: deterministic, using up to 16 threads.
+Root relaxation solution time = 0.00 sec. (0.96 ticks)
+
+        Nodes                                         Cuts/
+   Node  Left     Objective  IInf  Best Integer    Best Bound    ItCnt     Gap
+
+*     0+    0                            0.0000    28980.0000              --- 
+      0     0     1400.0000    24        0.0000     1400.0000      149     --- 
+*     0+    0                         1350.0000     1400.0000             3.70%
+      0     0     1400.0000     8     1350.0000       Cuts: 6      156    3.70%
+      0     0     1400.0000     8     1350.0000      Cuts: 30      175    3.70%
+      0     0     1400.0000    12     1350.0000      Cuts: 12      204    3.70%
+*     0+    0                         1390.0000     1400.0000             0.72%
+*     0+    0                         1395.0000     1400.0000             0.36%
+
+Implied bound cuts applied:  15
+Mixed integer rounding cuts applied:  1
+
+Root node processing (before b&c):
+  Real time             =    0.56 sec. (12.17 ticks)
+Parallel b&c, 16 threads:
+  Real time             =    0.00 sec. (0.00 ticks)
+  Sync time (average)   =    0.00 sec.
+  Wait time (average)   =    0.00 sec.
+                          ------------
+Total (root+branch&cut) =    0.56 sec. (12.17 ticks)
+
+Solution pool: 4 solutions saved.
+
+MIP - Integer optimal, tolerance (0.01/1e-06):  Objective =  1.3950000000e+03
+Current MIP best bound =  1.4000000000e+03 (gap = 5, 0.36%)
+Solution time =    0.56 sec.  Iterations = 204  Nodes = 0 (1)
+Deterministic time = 12.17 ticks  (21.65 ticks/sec)
+
+
+Incumbent solution written to file 'C:\Users\LENOVO\AppData\Local\Temp\tmpejpj4zor.sol'.
+
+Log started (V22.1.2.0) Tue Oct 27 01:00:27 2026
+
+
+Problem 'C:\Users\LENOVO\AppData\Local\Temp\delhi-optimizer-cplex-VOLyzC\model.lp' read.
+Read time = 0.02 sec. (0.03 ticks)
+New value for time limit in seconds: 15
+New value for mixed integer optimality gap tolerance: 0.01
+Version identifier: 22.1.2.0 | 2024-11-25 | 0edbb82fd
+CPXPARAM_TimeLimit                               15
+CPXPARAM_MIP_Tolerances_MIPGap                   0.01
+Found incumbent of value 0.000000 after 0.00 sec. (0.02 ticks)
+Tried aggregator 1 time.
+MIP Presolve eliminated 37 rows and 2 columns.
+MIP Presolve modified 327 coefficients.
+Reduced MIP has 184 rows, 169 columns, and 1048 nonzeros.
+Reduced MIP has 157 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.01 sec. (0.90 ticks)
+Probing time = 0.00 sec. (0.44 ticks)
+Tried aggregator 1 time.
+Detecting symmetries...
+Reduced MIP has 184 rows, 169 columns, and 1048 nonzeros.
+Reduced MIP has 157 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.00 sec. (0.66 ticks)
+Probing time = 0.02 sec. (0.46 ticks)
+Clique table members: 80.
+MIP emphasis: balance optimality and feasibility.
+MIP search method: dynamic search.
+Parallel mode: deterministic, using up to 16 threads.
+Root relaxation solution time = 0.00 sec. (0.96 ticks)
+
+        Nodes                                         Cuts/
+   Node  Left     Objective  IInf  Best Integer    Best Bound    ItCnt     Gap
+
+*     0+    0                            0.0000    28980.0000              --- 
+      0     0     1400.0000    24        0.0000     1400.0000      149     --- 
+*     0+    0                         1350.0000     1400.0000             3.70%
+      0     0     1400.0000     8     1350.0000       Cuts: 6      156    3.70%
+      0     0     1400.0000     8     1350.0000      Cuts: 30      175    3.70%
+      0     0     1400.0000    12     1350.0000      Cuts: 12      204    3.70%
+*     0+    0                         1390.0000     1400.0000             0.72%
+*     0+    0                         1395.0000     1400.0000             0.36%
+
+Implied bound cuts applied:  15
+Mixed integer rounding cuts applied:  1
+
+Root node processing (before b&c):
+  Real time             =    0.22 sec. (12.17 ticks)
+Parallel b&c, 16 threads:
+  Real time             =    0.00 sec. (0.00 ticks)
+  Sync time (average)   =    0.00 sec.
+  Wait time (average)   =    0.00 sec.
+                          ------------
+Total (root+branch&cut) =    0.22 sec. (12.17 ticks)
+
+Solution pool: 4 solutions saved.
+
+MIP - Integer optimal, tolerance (0.01/1e-06):  Objective =  1.3950000000e+03
+Current MIP best bound =  1.4000000000e+03 (gap = 5, 0.36%)
+Solution time =    0.22 sec.  Iterations = 204  Nodes = 0 (1)
+Deterministic time = 12.17 ticks  (55.83 ticks/sec)
+
+
+Incumbent solution written to file 'C:\Users\LENOVO\AppData\Local\Temp\tmph42so30p.sol'.
+
+Log started (V22.1.2.0) Tue Oct 27 01:00:28 2026
+
+
+Problem 'C:\Users\LENOVO\AppData\Local\Temp\delhi-optimizer-cplex-Q9LZGI\model.lp' read.
+Read time = 0.01 sec. (0.06 ticks)
+New value for time limit in seconds: 15
+New value for mixed integer optimality gap tolerance: 0.01
+Version identifier: 22.1.2.0 | 2024-11-25 | 0edbb82fd
+CPXPARAM_TimeLimit                               15
+CPXPARAM_MIP_Tolerances_MIPGap                   0.01
+Found incumbent of value 0.000000 after 0.00 sec. (0.05 ticks)
+Tried aggregator 1 time.
+MIP Presolve eliminated 74 rows and 4 columns.
+MIP Presolve modified 631 coefficients.
+Reduced MIP has 355 rows, 338 columns, and 2118 nonzeros.
+Reduced MIP has 314 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.02 sec. (1.51 ticks)
+Probing time = 0.00 sec. (1.82 ticks)
+Tried aggregator 1 time.
+Detecting symmetries...
+Reduced MIP has 355 rows, 338 columns, and 2118 nonzeros.
+Reduced MIP has 314 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.00 sec. (1.52 ticks)
+Probing time = 0.00 sec. (1.85 ticks)
+Clique table members: 1301.
+MIP emphasis: balance optimality and feasibility.
+MIP search method: dynamic search.
+Parallel mode: deterministic, using up to 16 threads.
+Root relaxation solution time = 0.00 sec. (1.63 ticks)
+
+        Nodes                                         Cuts/
+   Node  Left     Objective  IInf  Best Integer    Best Bound    ItCnt     Gap
+
+*     0+    0                            0.0000    57960.0000              --- 
+      0     0     1400.0000    25        0.0000     1400.0000      129     --- 
+      0     0     1400.0000    10        0.0000      Cuts: 10      146     --- 
+*     0+    0                          890.0000     1400.0000            57.30%
+      0     0     1400.0000     5      890.0000      Cuts: 19      167   57.30%
+      0     0     1400.0000    12      890.0000      Cuts: 15      192   57.30%
+      0     0     1400.0000     2      890.0000       Cuts: 8      201   57.30%
+*     0+    0                         1255.0000     1400.0000            11.55%
+      0     0     1400.0000     8     1255.0000       Cuts: 6      218   11.55%
+*     0+    0                         1395.0000     1400.0000             0.36%
+
+GUB cover cuts applied:  1
+Implied bound cuts applied:  23
+Mixed integer rounding cuts applied:  2
+
+Root node processing (before b&c):
+  Real time             =    0.30 sec. (29.05 ticks)
+Parallel b&c, 16 threads:
+  Real time             =    0.00 sec. (0.00 ticks)
+  Sync time (average)   =    0.00 sec.
+  Wait time (average)   =    0.00 sec.
+                          ------------
+Total (root+branch&cut) =    0.30 sec. (29.05 ticks)
+
+Solution pool: 4 solutions saved.
+
+MIP - Integer optimal, tolerance (0.01/1e-06):  Objective =  1.3950000000e+03
+Current MIP best bound =  1.4000000000e+03 (gap = 5, 0.36%)
+Solution time =    0.30 sec.  Iterations = 218  Nodes = 0 (1)
+Deterministic time = 29.05 ticks  (97.83 ticks/sec)
+
+
+Incumbent solution written to file 'C:\Users\LENOVO\AppData\Local\Temp\tmprvy52jom.sol'.
+
+Log started (V22.1.2.0) Tue Oct 27 01:00:32 2026
+
+
+Problem 'C:\Users\LENOVO\AppData\Local\Temp\delhi-optimizer-cplex-1PSiKe\model.lp' read.
+Read time = 0.00 sec. (0.03 ticks)
+New value for time limit in seconds: 15
+New value for mixed integer optimality gap tolerance: 0.01
+Version identifier: 22.1.2.0 | 2024-11-25 | 0edbb82fd
+CPXPARAM_TimeLimit                               15
+CPXPARAM_MIP_Tolerances_MIPGap                   0.01
+Found incumbent of value 0.000000 after 0.00 sec. (0.02 ticks)
+Tried aggregator 1 time.
+MIP Presolve eliminated 38 rows and 2 columns.
+MIP Presolve modified 313 coefficients.
+Reduced MIP has 183 rows, 169 columns, and 1046 nonzeros.
+Reduced MIP has 157 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.00 sec. (0.76 ticks)
+Probing time = 0.00 sec. (0.44 ticks)
+Tried aggregator 1 time.
+Detecting symmetries...
+Reduced MIP has 183 rows, 169 columns, and 1046 nonzeros.
+Reduced MIP has 157 binaries, 0 generals, 0 SOSs, and 0 indicators.
+Presolve time = 0.00 sec. (0.66 ticks)
+Probing time = 0.00 sec. (0.46 ticks)
+Clique table members: 80.
+MIP emphasis: balance optimality and feasibility.
+MIP search method: dynamic search.
+Parallel mode: deterministic, using up to 16 threads.
+Root relaxation solution time = 0.00 sec. (0.96 ticks)
+
+        Nodes                                         Cuts/
+   Node  Left     Objective  IInf  Best Integer    Best Bound    ItCnt     Gap
+
+*     0+    0                            0.0000    28980.0000              --- 
+      0     0     1400.0000    21        0.0000     1400.0000      149     --- 
+      0     0     1400.0000     8        0.0000       Cuts: 7      162     --- 
+      0     0     1400.0000    10        0.0000      Cuts: 26      179     --- 
+*     0+    0                          930.0000     1400.0000            50.54%
+      0     0     1400.0000    12      930.0000    GUBcuts: 1      187   50.54%
+*     0+    0                         1400.0000     1400.0000             0.00%
+      0     0        cutoff           1400.0000     1400.0000      187    0.00%
+Elapsed time = 0.17 sec. (15.60 ticks, tree = 0.01 MB, solutions = 2)
+
+Implied bound cuts applied:  5
+Flow cuts applied:  1
+Mixed integer rounding cuts applied:  1
+
+Root node processing (before b&c):
+  Real time             =    0.17 sec. (15.61 ticks)
+Parallel b&c, 16 threads:
+  Real time             =    0.00 sec. (0.00 ticks)
+  Sync time (average)   =    0.00 sec.
+  Wait time (average)   =    0.00 sec.
+                          ------------
+Total (root+branch&cut) =    0.17 sec. (15.61 ticks)
+
+Solution pool: 3 solutions saved.
+
+MIP - Integer optimal solution:  Objective =  1.4000000000e+03
+Solution time =    0.19 sec.  Iterations = 187  Nodes = 0
+Deterministic time = 15.61 ticks  (83.02 ticks/sec)
+
+
+Incumbent solution written to file 'C:\Users\LENOVO\AppData\Local\Temp\tmpgig46168.sol'.
