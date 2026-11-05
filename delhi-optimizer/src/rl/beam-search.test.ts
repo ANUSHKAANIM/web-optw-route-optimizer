@@ -28,6 +28,13 @@ const BASE_INPUT = {
   shelterCapacity,
 };
 
+describe("computeNeuralRoute vehicle capacity (Phase 7)", () => {
+  it("never lets a single route carry more total demand than the van's own capacity", async () => {
+    const route = await computeNeuralRoute({ ...BASE_INPUT, beamWidth: 4, vehicleCapacity: 150 });
+    expect(route.totalDemandServed).toBeLessThanOrEqual(150);
+  }, 30_000);
+});
+
 describe("computeNeuralRoute (beam search over the trained PointerNetwork)", () => {
   it("never visits the same node twice and never revisits the shelter mid-route", async () => {
     const route = await computeNeuralRoute({ ...BASE_INPUT, beamWidth: 4 });

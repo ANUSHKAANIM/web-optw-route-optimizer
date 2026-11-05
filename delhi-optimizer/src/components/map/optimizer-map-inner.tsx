@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import type { GraphNode, Edge } from "@/types/graph";
 import type { Route, InfeasibilityReason } from "@/types/game";
 import { buildNodeLabels } from "@/lib/node-labels";
+import type { HeatmapGrid, HeatmapBin } from "./risk-heatmap-binning";
+import type { RiskTier } from "@/forecast/risk-tiers";
 
 /**
  * Abstract disaster-area network visualization -- a plain SVG canvas with a
@@ -57,15 +59,57 @@ export interface OptimizerMapProps {
    * clear simulation label. */
   riskRings?: MapRiskRing[];
   interactive?: boolean;
+  /** Phase 6 (dashboard at scale): when provided, renders this aggregated
+   * heatmap grid (see risk-heatmap-binning.ts) as a colored background
+   * and SKIPS per-node circles/labels/hover entirely -- the only way
+   * 20,000 cells stay renderable in a browser (one DOM element per bin,
+   * not per node). Omitted (the default): renders exactly as before,
+   * one marker per node -- existing callers and the small-scenario game
+   * are completely unaffected by this prop's existence. Heatmap bins are
+   * display-only in this pass (no hover/click yet); per-cell detail at
+   * scale is a known follow-up, not built here. */
+  heatmapGrid?: HeatmapGrid;
+  /** Live van positions, rendered as the interactive layer when
+   * heatmapGrid is active (replacing per-village markers at scale). */
+  vanMarkers?: MapVanMarker[];
+  /** Planned routes for multiple vans at once -- distinct from the single
+   * `route`/`secondaryRoute` props above (which are for one player's own
+   * preview). Points are plain (x, y) pairs, already resolved by the
+   * caller, so this component never needs a nodeById lookup across
+   * several different vans' potentially-different local graphs. */
+  vanRoutes?: { vanId: number; points: [number, number][]; color: string }[];
+  /** Explicit viewBox bounds, bypassing the usual "derive min/max from
+   * `nodes`" computation. For large-scale (heatmap-mode) callers: shipping
+   * every node's full object to the client just to compute a bounding box
+   * is wasteful once there are thousands of them -- pass `bounds` and a
+   * much smaller (or empty) `nodes` array instead. Measured: a 20,000-node
+   * scale-preview page dropped from ~16.5MB to a small fraction of that
+   * once bounds no longer required the full node list. */
+  bounds?: Bounds;
+}
+
+export interface MapVanMarker {
+  vanId: number;
+  x: number;
+  y: number;
+  color: string;
+  label?: string;
 }
 
 const RISK_COLORS: Record<MapRiskRing["level"], string> = { high: "#dc2626", medium: "#f97316", low: "#facc15" };
+const TIER_COLORS: Record<RiskTier, string> = {
+  normal: "#1e293b",
+  watch: "#facc15",
+  warning: "#f97316",
+  severe: "#ef4444",
+  critical: "#991b1b",
+};
 const VIEWBOX_PADDING_KM = 6;
 const GRID_STEP_KM = 5;
 
-function markerRadius(priority: number, maxPriority: number): number {
-  if (maxPriority <= 0) return 0.42;
-  return 0.42 + Math.max(0, Math.min(1, priority / maxPriority)) * 0.5;
+function markerRadius(demand: number, maxDemand: number): number {
+  if (maxDemand <= 0) return 0.42;
+  return 0.42 + Math.max(0, Math.min(1, demand / maxDemand)) * 0.5;
 }
 
 const LINE_OFFSET = 0.22;
@@ -106,9 +150,10 @@ const INFEASIBLE_REASON_LABELS: Record<InfeasibilityReason, string> = {
   time_window: "Can't arrive and finish within its access window from here.",
   time_budget: "Reachable in time, but you couldn't get back to the shelter before your session time runs out.",
   shelter_capacity: "The shelter doesn't have enough remaining capacity for this village's population.",
+  vehicle_capacity: "This van doesn't have enough remaining onboard capacity for this village's population.",
 };
 
-interface Bounds {
+export interface Bounds {
   minX: number;
   minY: number;
   width: number;
@@ -131,16 +176,27 @@ export default function OptimizerMapInner({
   otherPlayers,
   riskRings,
   interactive = true,
+  heatmapGrid,
+  vanMarkers,
+  vanRoutes,
+  bounds: boundsOverride,
 }: OptimizerMapProps) {
+  const isHeatmapMode = heatmapGrid !== undefined;
   const [hoveredNodeId, setHoveredNodeId] = useState<string | undefined>(undefined);
+  // Per-node circles (and their hover handlers below) only render outside
+  // heatmap mode -- at 20,000-cell scale there's no per-node shape to
+  // hover at all, so "hover a node" could never do anything. This gives
+  // heatmap mode its own hoverable target: the aggregated bin itself.
+  const [hoveredBin, setHoveredBin] = useState<HeatmapBin | undefined>(undefined);
 
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
-  const maxPriority = useMemo(() => Math.max(1, ...Object.values(priorities)), [priorities]);
+  const maxDemand = useMemo(() => Math.max(1, ...nodes.map((n) => n.demand)), [nodes]);
   const nodeLabels = useMemo(() => buildNodeLabels(nodes, depotNodeId), [nodes, depotNodeId]);
   const visitedSet = useMemo(() => new Set(visitedPath ?? []), [visitedPath]);
   const feasibleSet = useMemo(() => new Set(feasibleNodeIds ?? []), [feasibleNodeIds]);
 
   const bounds: Bounds = useMemo(() => {
+    if (boundsOverride) return boundsOverride;
     if (nodes.length === 0) return { minX: 0, minY: 0, width: 1, height: 1 };
     const xs = nodes.map((n) => n.x);
     const ys = nodes.map((n) => n.y);
@@ -149,7 +205,12 @@ export default function OptimizerMapInner({
     const width = Math.max(...xs) - Math.min(...xs) + VIEWBOX_PADDING_KM * 2;
     const height = Math.max(...ys) - Math.min(...ys) + VIEWBOX_PADDING_KM * 2;
     return { minX, minY, width: Math.max(width, 1), height: Math.max(height, 1) };
-  }, [nodes]);
+  }, [nodes, boundsOverride]);
+
+  // Scaled to the map's actual span, not a fixed km value -- a fixed
+  // 0.45km radius is invisible against a 600km-wide, 15km-binned heatmap
+  // (measured: that's exactly what made van markers disappear at scale).
+  const vanMarkerRadius = Math.max(bounds.width, bounds.height) * 0.012;
 
   const gridLinesX = useMemo(() => {
     const start = Math.floor(bounds.minX / GRID_STEP_KM) * GRID_STEP_KM;
@@ -231,6 +292,28 @@ export default function OptimizerMapInner({
               <path d="M1,1.5 L11,6 L1,10.5 L3.8,6 Z" fill={fill} stroke="#0f172a" strokeWidth="0.6" strokeLinejoin="round" />
             </marker>
           ))}
+          {/* One arrowhead marker per van, in that van's own color, so the
+              direction of travel along its dashed route is unambiguous
+              even with several vans' lines overlapping on the full map. */}
+          {vanRoutes?.map((vr) => (
+            <marker
+              key={`arrow-van-${vr.vanId}`}
+              id={`arrow-van-${vr.vanId}`}
+              viewBox="0 0 12 12"
+              refX="9.5"
+              refY="6"
+              // Scaled to vanMarkerRadius (which already accounts for the
+              // current viewBox/zoom), NOT a fixed absolute size -- a fixed
+              // size looked tiny on the full map but gigantic once zoomed
+              // into a single van's route, where bounds are much smaller.
+              markerWidth={vanMarkerRadius * 0.9}
+              markerHeight={vanMarkerRadius * 0.9}
+              markerUnits="userSpaceOnUse"
+              orient="auto-start-reverse"
+            >
+              <path d="M1,1.5 L11,6 L1,10.5 L3.8,6 Z" fill={vr.color} stroke="#0f172a" strokeWidth="1.1" strokeLinejoin="round" />
+            </marker>
+          ))}
         </defs>
 
         {/* Subtle coordinate grid -- an abstract simulation plane, not a real map. */}
@@ -256,6 +339,39 @@ export default function OptimizerMapInner({
             strokeWidth={0.04}
           />
         ))}
+
+        {isHeatmapMode &&
+          heatmapGrid!.bins.map((bin) => (
+            <rect
+              key={`bin-${bin.binX}-${bin.binY}`}
+              x={bin.minX}
+              y={bin.minY}
+              width={bin.maxX - bin.minX}
+              height={bin.maxY - bin.minY}
+              fill={bin.worstTier === "normal" ? "#334155" : TIER_COLORS[bin.worstTier]}
+              fillOpacity={bin.worstTier === "normal" ? 0.3 : 0.55 + bin.averageRiskScore * 0.4}
+              stroke={hoveredBin?.binX === bin.binX && hoveredBin?.binY === bin.binY ? "#f8fafc" : "#0f172a"}
+              strokeWidth={hoveredBin?.binX === bin.binX && hoveredBin?.binY === bin.binY ? 0.12 : 0.03}
+              onMouseEnter={() => setHoveredBin(bin)}
+              onMouseLeave={() => setHoveredBin((b) => (b?.binX === bin.binX && b?.binY === bin.binY ? undefined : b))}
+              style={{ cursor: "pointer" }}
+            />
+          ))}
+
+        {isHeatmapMode &&
+          nodes
+            .filter((n) => n.role === "shelter")
+            .map((shelter) => (
+              <circle
+                key={`shelter-${shelter.id}`}
+                cx={shelter.x}
+                cy={shelter.y}
+                r={vanMarkerRadius * 0.8}
+                fill="#ef4444"
+                stroke="#0f172a"
+                strokeWidth={vanMarkerRadius * 0.12}
+              />
+            ))}
 
         {riskRings?.map((ring, i) => (
           <circle
@@ -357,19 +473,19 @@ export default function OptimizerMapInner({
             );
           })}
 
-        {nodes.map((node) => {
+        {!isHeatmapMode &&
+          nodes.map((node) => {
           const isDepot = node.id === depotNodeId;
           const isCurrent = node.id === currentNodeId;
           const isVisited = visitedSet.has(node.id);
           const isSelected = node.id === selectedNodeId;
           const isFeasible = feasibleNodeIds ? feasibleSet.has(node.id) : true;
-          const priority = priorities[node.id] ?? 0;
           const clickable = interactive && !!onSelectNode && isFeasible;
 
           const color = isVisited ? "#3b82f6" : isFeasible ? "#10b981" : "#64748b";
           const borderColor = isCurrent ? "#facc15" : isSelected ? "#3b82f6" : "#0f172a";
 
-          const radius = isDepot ? 1.0 : markerRadius(priority, maxPriority);
+          const radius = isDepot ? 1.0 : markerRadius(node.demand, maxDemand);
 
           return (
             <g
@@ -413,6 +529,54 @@ export default function OptimizerMapInner({
             </g>
           );
         })}
+
+        {vanRoutes?.map((vr) =>
+          vr.points.slice(0, -1).map(([x1, y1], i) => {
+            const [x2, y2] = vr.points[i + 1];
+            return (
+              <line
+                key={`vanroute-${vr.vanId}-${i}`}
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke={vr.color}
+                strokeWidth={vanMarkerRadius * 0.35}
+                strokeOpacity={0.85}
+                strokeLinecap="round"
+                strokeDasharray={`${vanMarkerRadius * 0.9} ${vanMarkerRadius * 0.6}`}
+                markerEnd={`url(#arrow-van-${vr.vanId})`}
+              />
+            );
+          }),
+        )}
+
+        {vanMarkers?.map((van) => (
+          <g key={`van-${van.vanId}`}>
+            <circle
+              cx={van.x}
+              cy={van.y}
+              r={vanMarkerRadius}
+              fill={van.color}
+              stroke="#0f172a"
+              strokeWidth={vanMarkerRadius * 0.16}
+            />
+            {van.label && (
+              <text
+                x={van.x + vanMarkerRadius * 1.3}
+                y={van.y - vanMarkerRadius * 0.9}
+                fontSize={vanMarkerRadius * 1.4}
+                fill="#e2e8f0"
+                stroke="#0f172a"
+                strokeWidth={vanMarkerRadius * 0.3}
+                paintOrder="stroke"
+                style={{ pointerEvents: "none", userSelect: "none" }}
+              >
+                {van.label}
+              </text>
+            )}
+          </g>
+        ))}
 
         {otherPlayers?.map((player) => {
           const node = nodeById.get(player.currentNodeId);
@@ -466,8 +630,24 @@ export default function OptimizerMapInner({
               </p>
             )}
           </div>
+        ) : hoveredBin ? (
+          <div className="space-y-1">
+            <p className="font-semibold capitalize">
+              {hoveredBin.worstTier === "normal" ? "No risk" : hoveredBin.worstTier} area
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {heatmapGrid?.binSizeKm}km × {heatmapGrid?.binSizeKm}km cell
+            </p>
+            <p>Villages/shelters in this cell: {hoveredBin.cellCount}</p>
+            <p>Average risk score: {hoveredBin.averageRiskScore.toFixed(2)}</p>
+            <p className="text-xs text-muted-foreground">
+              Worst tier present: <span className="capitalize">{hoveredBin.worstTier}</span>
+            </p>
+          </div>
         ) : (
-          <p className="text-xs text-muted-foreground">Hover a node to see its details.</p>
+          <p className="text-xs text-muted-foreground">
+            {isHeatmapMode ? "Hover a heatmap cell to see its details." : "Hover a node to see its details."}
+          </p>
         )}
       </div>
     </div>

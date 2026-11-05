@@ -38,6 +38,28 @@ export interface FeasibilityInput {
   demandServedSoFar: number;
   /** The destination shelter's total capacity. */
   shelterCapacity: number;
+  /** This van's own carrying capacity -- distinct from shelterCapacity
+   * (the shelter's aggregate, session-wide limit shared across every
+   * van). undefined = no vehicle-capacity constraint, fully backward
+   * compatible with every call site that predates this field. Phase 7:
+   * "persons already picked up remain in the vehicle until a shelter
+   * drop-off" -- since this project's routes are a single continuous
+   * trip back to the depot (no intermediate drop-offs modeled yet), the
+   * onboard count simply accumulates for the whole route, same as
+   * demandServedSoFar does for the shelter. */
+  vehicleCapacity?: number;
+  /** Demand THIS van is currently carrying onboard, picked up earlier in
+   * its own route-in-progress -- distinct from demandServedSoFar.
+   * Ignored when vehicleCapacity is undefined. */
+  onboardDemandSoFar?: number;
+  /** Per-cell forecast-driven evacuation deadline (CycloneForecastEngine's
+   * CellForecastResult.window), nodeId -> window or null. A present entry
+   * NARROWS that node's static openingHours window to whichever closes
+   * first; a node with no entry here is unaffected (falls back to its
+   * static window alone, the pre-Phase-7.5 behavior). Optional so every
+   * caller that predates the forecast-driven deadline keeps working
+   * unchanged. */
+  deadlineWindows?: ReadonlyMap<string, RelativeWindow | null>;
 }
 
 function parseHHMM(hhmm: string): number {
@@ -73,6 +95,31 @@ export function computeRelativeWindow(
   if (closeMinutes <= 0) return null;
 
   return { effectiveOpenMinutes: Math.max(openRelative, 0), closeMinutes };
+}
+
+/** Intersects a node's static weekly openingHours window with an optional
+ * forecast-driven deadline override: the effective window is whichever is
+ * MORE restrictive on each end (opens later of the two, closes earlier of
+ * the two). `deadlineOverride` of undefined means "no forecast deadline
+ * known for this node" (falls back to the static window alone); explicit
+ * null means "this node has no forecast deadline even though an entry was
+ * looked up" (same result, kept distinct for callers that want to tell
+ * the two apart). A deadline that lands before the node even opens, or
+ * closes before it, naturally makes `canFinishBeforeClosing` false
+ * downstream -- no separate "already missed" case needed. */
+export function effectiveWindow(
+  node: GraphNode,
+  weekday: Weekday,
+  gameStartMinutesOfDay: number,
+  deadlineOverride?: RelativeWindow | null,
+): RelativeWindow | null {
+  const staticWindow = computeRelativeWindow(node, weekday, gameStartMinutesOfDay);
+  if (!deadlineOverride) return staticWindow;
+  if (!staticWindow) return null;
+  return {
+    effectiveOpenMinutes: Math.max(staticWindow.effectiveOpenMinutes, deadlineOverride.effectiveOpenMinutes),
+    closeMinutes: Math.min(staticWindow.closeMinutes, deadlineOverride.closeMinutes),
+  };
 }
 
 export interface ArrivalPlan {
@@ -129,13 +176,16 @@ export function computeNodeStates(input: FeasibilityInput): NodeState[] {
     riskScores,
     demandServedSoFar,
     shelterCapacity,
+    vehicleCapacity,
+    onboardDemandSoFar,
+    deadlineWindows,
   } = input;
 
   return graph.nodes.map((node) => {
     const priority = priorities.get(node.id) ?? 0;
     const riskScore = riskScores.get(node.id) ?? 0;
     const isSelfOrVisited = node.id === currentNodeId || visited.has(node.id);
-    const window = computeRelativeWindow(node, weekday, gameStartMinutesOfDay);
+    const window = effectiveWindow(node, weekday, gameStartMinutesOfDay, deadlineWindows?.get(node.id));
 
     if (!window) {
       return {
@@ -154,11 +204,14 @@ export function computeNodeStates(input: FeasibilityInput): NodeState[] {
     const returnTravel = graph.travelTimeMinutes.get(node.id)?.get(depotNodeId) ?? Infinity;
     const withinGameBudget = plan.finishVisitMinutes + returnTravel <= totalGameMinutes;
     const withinShelterCapacity = node.role !== "origin" || demandServedSoFar + node.demand <= shelterCapacity;
+    const withinVehicleCapacity =
+      vehicleCapacity === undefined || node.role !== "origin" || (onboardDemandSoFar ?? 0) + node.demand <= vehicleCapacity;
 
     const isOpenNow = elapsedMinutes >= window.effectiveOpenMinutes && elapsedMinutes < window.closeMinutes;
     const minutesUntilClosing = window.closeMinutes - elapsedMinutes;
 
-    const feasible = !isSelfOrVisited && plan.canFinishBeforeClosing && withinGameBudget && withinShelterCapacity;
+    const feasible =
+      !isSelfOrVisited && plan.canFinishBeforeClosing && withinGameBudget && withinShelterCapacity && withinVehicleCapacity;
     const infeasibleReason: InfeasibilityReason | undefined = feasible
       ? undefined
       : isSelfOrVisited
@@ -167,7 +220,9 @@ export function computeNodeStates(input: FeasibilityInput): NodeState[] {
           ? "time_window"
           : !withinGameBudget
             ? "time_budget"
-            : "shelter_capacity";
+            : !withinShelterCapacity
+              ? "shelter_capacity"
+              : "vehicle_capacity";
 
     return {
       nodeId: node.id,

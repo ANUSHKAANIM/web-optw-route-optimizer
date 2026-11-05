@@ -42,6 +42,10 @@ export interface BeamSearchInput {
   alreadyVisited?: ReadonlySet<string>;
   beamWidth?: number;
   maxDepth?: number;
+  /** This van's own carrying capacity (Phase 7) -- distinct from the
+   * shared shelterCapacity. undefined = unconstrained, same as every
+   * caller before this field existed. */
+  vehicleCapacity?: number;
 }
 
 interface PathStop {
@@ -63,6 +67,9 @@ interface BeamState {
   totalDemandServed: number;
   totalDistanceKm: number;
   demandServedSoFar: number;
+  /** Demand THIS beam's van is carrying onboard right now -- Phase 7,
+   * distinct from demandServedSoFar (the shared shelter's running total). */
+  onboardDemandSoFar: number;
   logProbScore: number;
   done: boolean;
 }
@@ -85,6 +92,7 @@ export async function computeNeuralRoute(input: BeamSearchInput): Promise<Route>
     alreadyVisited,
     beamWidth = DEFAULT_BEAM_WIDTH,
     maxDepth,
+    vehicleCapacity,
   } = input;
 
   const initialVisited = new Set<string>([currentNodeId, ...(alreadyVisited ?? [])]);
@@ -100,6 +108,7 @@ export async function computeNeuralRoute(input: BeamSearchInput): Promise<Route>
       totalDemandServed: 0,
       totalDistanceKm: 0,
       demandServedSoFar,
+      onboardDemandSoFar: 0,
       logProbScore: 0,
       done: false,
     },
@@ -129,6 +138,8 @@ export async function computeNeuralRoute(input: BeamSearchInput): Promise<Route>
         riskScores,
         demandServedSoFar: beam.demandServedSoFar,
         shelterCapacity,
+        vehicleCapacity,
+        onboardDemandSoFar: beam.onboardDemandSoFar,
       });
       const feasibleIds = new Set(states.filter((s) => s.feasible).map((s) => s.nodeId));
       if (feasibleIds.size === 0) {
@@ -196,6 +207,7 @@ export async function computeNeuralRoute(input: BeamSearchInput): Promise<Route>
           totalDemandServed: beam.totalDemandServed + demandServed,
           totalDistanceKm: beam.totalDistanceKm + distance,
           demandServedSoFar: beam.demandServedSoFar + demandServed,
+          onboardDemandSoFar: beam.onboardDemandSoFar + demandServed,
           logProbScore: beam.logProbScore + Math.log((probs[idx] ?? 0) + 1e-8),
           done: false,
         });

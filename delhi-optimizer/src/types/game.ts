@@ -17,7 +17,8 @@ export type InfeasibilityReason =
   | "closed_today"
   | "time_window"
   | "time_budget"
-  | "shelter_capacity";
+  | "shelter_capacity"
+  | "vehicle_capacity";
 
 export interface NodeState {
   nodeId: string;
@@ -31,15 +32,17 @@ export interface NodeState {
   visited: boolean;
   /** True only if the visit can be started (accessible), completed before
    * the access window closes, the player can still get back within the
-   * remaining time budget, AND (for an origin) the shelter still has
-   * enough remaining capacity to receive this many more evacuees. */
+   * remaining time budget, the shelter still has enough remaining
+   * capacity to receive this many more evacuees, AND (when a
+   * vehicleCapacity is configured) this van itself still has room
+   * onboard for this many more people. */
   feasible: boolean;
   /** Which specific rule blocked this node, when `feasible` is false --
    * undefined when feasible is true. If more than one rule is violated,
    * reports the first one checked (already_done, then closed_today, then
-   * time_window, then time_budget, then shelter_capacity), since that's
-   * the one the UI explains first and the others are moot once that one
-   * applies. */
+   * time_window, then time_budget, then shelter_capacity, then
+   * vehicle_capacity), since that's the one the UI explains first and
+   * the others are moot once that one applies. */
   infeasibleReason?: InfeasibilityReason;
 }
 

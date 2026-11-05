@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EVACUATION_NODES, SHELTER_DEPOT_ID } from "@/data/evacuation-nodes";
 import { buildGraph } from "@/graph/build-graph";
-import { computeNodeStates } from "./feasibility";
+import { computeNodeStates, effectiveWindow } from "./feasibility";
 
 const graph = buildGraph(EVACUATION_NODES);
 const depotId = SHELTER_DEPOT_ID;
@@ -51,6 +51,41 @@ describe("computeNodeStates", () => {
     for (const s of states.filter((s) => s.feasible)) {
       expect(s.infeasibleReason).toBeUndefined();
     }
+  });
+
+  it("is unaffected by vehicleCapacity when it is left undefined", () => {
+    const withCapacity = computeNodeStates(BASE_INPUT);
+    const withoutCapacity = computeNodeStates({ ...BASE_INPUT, vehicleCapacity: undefined });
+    expect(withCapacity).toEqual(withoutCapacity);
+  });
+
+  it("reports vehicle_capacity when this van's own capacity is the binding constraint, even though shelter capacity is not", () => {
+    const anOrigin = EVACUATION_NODES.find((n) => n.role === "origin" && n.demand > 0)!;
+    const states = computeNodeStates({
+      ...BASE_INPUT,
+      vehicleCapacity: anOrigin.demand - 1, // van can't fit this origin's people at all
+      onboardDemandSoFar: 0,
+    });
+    const state = states.find((s) => s.nodeId === anOrigin.id)!;
+    expect(state.feasible).toBe(false);
+    expect(state.infeasibleReason).toBe("vehicle_capacity");
+  });
+
+  it("becomes feasible again once onboardDemandSoFar plus the node's demand fits within vehicleCapacity", () => {
+    const anOrigin = EVACUATION_NODES.find((n) => n.role === "origin" && n.demand > 0)!;
+    const states = computeNodeStates({
+      ...BASE_INPUT,
+      vehicleCapacity: anOrigin.demand,
+      onboardDemandSoFar: 0,
+    });
+    const state = states.find((s) => s.nodeId === anOrigin.id)!;
+    expect(state.infeasibleReason).not.toBe("vehicle_capacity");
+  });
+
+  it("never applies vehicle_capacity to the shelter itself", () => {
+    const states = computeNodeStates({ ...BASE_INPUT, vehicleCapacity: 0, onboardDemandSoFar: 0 });
+    const shelterState = states.find((s) => s.nodeId === depotId)!;
+    expect(shelterState.infeasibleReason).not.toBe("vehicle_capacity");
   });
 
   it("reports time_budget when the round trip alone doesn't fit, distinct from time_window", () => {
@@ -117,5 +152,64 @@ describe("computeNodeStates", () => {
       const shelterState = states.find((s) => s.nodeId === depotId)!;
       expect(shelterState.feasible).toBe(true);
     });
+  });
+
+  describe("deadlineWindows (forecast-driven evacuation deadline)", () => {
+    it("is unaffected when no entry exists for a node, same as before this field existed", () => {
+      const withMap = computeNodeStates({ ...BASE_INPUT, deadlineWindows: new Map() });
+      const without = computeNodeStates(BASE_INPUT);
+      expect(withMap).toEqual(without);
+    });
+
+    it("makes a node infeasible once the forecast deadline has already passed, even though its static opening hours are still open", () => {
+      const origin = EVACUATION_NODES.find((n) => n.role === "origin")!;
+      const states = computeNodeStates({
+        ...BASE_INPUT,
+        deadlineWindows: new Map([[origin.id, { effectiveOpenMinutes: 0, closeMinutes: -1 }]]),
+      });
+      const state = states.find((s) => s.nodeId === origin.id)!;
+      expect(state.feasible).toBe(false);
+      expect(state.infeasibleReason).toBe("time_window");
+    });
+
+    it("leaves a node feasible when its forecast deadline is generous (later than the static window would already allow)", () => {
+      const origin = EVACUATION_NODES.find((n) => n.role === "origin")!;
+      const baseline = computeNodeStates(BASE_INPUT).find((s) => s.nodeId === origin.id)!;
+      const states = computeNodeStates({
+        ...BASE_INPUT,
+        deadlineWindows: new Map([[origin.id, { effectiveOpenMinutes: 0, closeMinutes: 100_000 }]]),
+      });
+      const state = states.find((s) => s.nodeId === origin.id)!;
+      expect(state.feasible).toBe(baseline.feasible);
+    });
+
+    it("an explicit null entry behaves the same as no entry at all", () => {
+      const origin = EVACUATION_NODES.find((n) => n.role === "origin")!;
+      const withNull = computeNodeStates({ ...BASE_INPUT, deadlineWindows: new Map([[origin.id, null]]) });
+      const without = computeNodeStates(BASE_INPUT);
+      expect(withNull).toEqual(without);
+    });
+  });
+});
+
+describe("effectiveWindow", () => {
+  const origin = EVACUATION_NODES.find((n) => n.role === "origin")!;
+  const weekday = "monday" as const;
+  const gameStartMinutesOfDay = 9 * 60;
+
+  it("intersects the static window with a narrower deadline override, closing at whichever is earlier", () => {
+    const staticWindow = effectiveWindow(origin, weekday, gameStartMinutesOfDay);
+    expect(staticWindow).not.toBeNull();
+    const narrowed = effectiveWindow(origin, weekday, gameStartMinutesOfDay, {
+      effectiveOpenMinutes: staticWindow!.effectiveOpenMinutes,
+      closeMinutes: staticWindow!.closeMinutes - 10,
+    });
+    expect(narrowed!.closeMinutes).toBe(staticWindow!.closeMinutes - 10);
+  });
+
+  it("falls back to the static window alone when no override is given", () => {
+    expect(effectiveWindow(origin, weekday, gameStartMinutesOfDay, undefined)).toEqual(
+      effectiveWindow(origin, weekday, gameStartMinutesOfDay),
+    );
   });
 });

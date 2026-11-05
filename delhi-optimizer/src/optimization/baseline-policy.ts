@@ -1,6 +1,6 @@
 import type { Graph, Weekday } from "@/types/graph";
 import type { Route } from "@/types/game";
-import { computeNodeStates, computeRelativeWindow, planArrival } from "./feasibility";
+import { computeNodeStates, effectiveWindow, planArrival, type RelativeWindow } from "./feasibility";
 
 export interface BaselinePolicyInput {
   graph: Graph;
@@ -20,6 +20,14 @@ export interface BaselinePolicyInput {
    * one) -- their demand is already served, so they must never be
    * suggested again regardless of which player's route this is. */
   alreadyVisited?: ReadonlySet<string>;
+  /** This van's own carrying capacity (Phase 7) -- distinct from the
+   * shared shelterCapacity. undefined = unconstrained, same as every
+   * caller before this field existed. */
+  vehicleCapacity?: number;
+  /** Per-cell forecast-driven evacuation deadline -- see
+   * FeasibilityInput.deadlineWindows. Optional, same backward-compat
+   * convention as every other field here. */
+  deadlineWindows?: ReadonlyMap<string, RelativeWindow | null>;
 }
 
 /**
@@ -44,6 +52,7 @@ export function computeBaselineRoute(input: BaselinePolicyInput): Route {
   let currentNodeId = input.currentNodeId;
   let elapsedMinutes = 0;
   let demandServedSoFar = input.demandServedSoFar;
+  let onboardDemandSoFar = 0;
 
   const stops: Route["stops"] = [];
   let totalDistanceKm = 0;
@@ -64,6 +73,9 @@ export function computeBaselineRoute(input: BaselinePolicyInput): Route {
       riskScores,
       demandServedSoFar,
       shelterCapacity,
+      vehicleCapacity: input.vehicleCapacity,
+      onboardDemandSoFar,
+      deadlineWindows: input.deadlineWindows,
     });
     const feasible = states.filter((s) => s.feasible);
     if (feasible.length === 0) break;
@@ -73,7 +85,9 @@ export function computeBaselineRoute(input: BaselinePolicyInput): Route {
     let bestDensity = -Infinity;
     for (const candidate of feasible) {
       const candidateNode = graph.nodesById.get(candidate.nodeId);
-      const window = candidateNode ? computeRelativeWindow(candidateNode, weekday, gameStartMinutesOfDay) : null;
+      const window = candidateNode
+        ? effectiveWindow(candidateNode, weekday, gameStartMinutesOfDay, input.deadlineWindows?.get(candidate.nodeId))
+        : null;
       if (!candidateNode || !window) continue;
 
       const plan = planArrival(graph, currentNodeId, candidate.nodeId, elapsedMinutes, window, candidateNode.serviceDurationMinutes);
@@ -106,6 +120,7 @@ export function computeBaselineRoute(input: BaselinePolicyInput): Route {
     totalReward += reward;
     totalDemandServed += demandServed;
     demandServedSoFar += demandServed;
+    onboardDemandSoFar += demandServed;
     elapsedMinutes = plan.finishVisitMinutes;
     visited.add(node.id);
     currentNodeId = node.id;

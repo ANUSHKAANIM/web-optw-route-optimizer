@@ -27,6 +27,32 @@ const BASE_INPUT = {
   shelterCapacity,
 };
 
+describe("computeBaselineRoute vehicle capacity (Phase 7)", () => {
+  it("is unaffected when vehicleCapacity is left undefined", () => {
+    const withCapacity = computeBaselineRoute(BASE_INPUT);
+    const withoutCapacity = computeBaselineRoute({ ...BASE_INPUT, vehicleCapacity: undefined });
+    expect(withCapacity.stops).toEqual(withoutCapacity.stops);
+    expect(withCapacity.totalReward).toBe(withoutCapacity.totalReward);
+    expect(withCapacity.totalDemandServed).toBe(withoutCapacity.totalDemandServed);
+  });
+
+  it("never lets a single route carry more total demand than the van's own capacity", () => {
+    const route = computeBaselineRoute({ ...BASE_INPUT, vehicleCapacity: 150 });
+    expect(route.totalDemandServed).toBeLessThanOrEqual(150);
+  });
+
+  it("can be strictly more restrictive than shelterCapacity alone", () => {
+    const unconstrained = computeBaselineRoute(BASE_INPUT);
+    // Only meaningful if the unconstrained route actually collects more
+    // than this tiny van capacity would allow.
+    expect(unconstrained.totalDemandServed).toBeGreaterThan(50);
+
+    const constrained = computeBaselineRoute({ ...BASE_INPUT, vehicleCapacity: 50 });
+    expect(constrained.totalDemandServed).toBeLessThanOrEqual(50);
+    expect(constrained.totalDemandServed).toBeLessThan(unconstrained.totalDemandServed);
+  });
+});
+
 describe("computeBaselineRoute", () => {
   it("never visits the same node twice and never revisits the shelter mid-route", () => {
     const route = computeBaselineRoute(BASE_INPUT);

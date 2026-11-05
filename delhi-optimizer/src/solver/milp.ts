@@ -36,9 +36,11 @@ import { solveWithCplex, type LpSolveResult } from "./cplex-solver";
  * was reported as it actually was, not assumed.
  *
  * Formulation: a multi-vehicle Team Orienteering Problem with Time
- * Windows, plus a side constraint this project actually needs that
+ * Windows, plus two side constraints this project actually needs that
  * classic TOPTW doesn't have -- a SHARED shelter-capacity budget consumed
- * jointly by every team's selected villages, not a per-vehicle capacity.
+ * jointly by every team's selected villages, AND (Phase 7) an optional
+ * PER-TEAM vehicle-capacity budget consumed only by that team's own
+ * selections.
  *
  *   - Each team k starts at ITS OWN current node (not necessarily the
  *     depot) with ITS OWN remaining time budget, and must end at the
@@ -53,6 +55,11 @@ import { solveWithCplex, type LpSolveResult } from "./cplex-solver";
  *   - sum(demand of every assigned origin) must not exceed the shelter's
  *     REMAINING capacity (shelterCapacity - demandServed) -- one shared
  *     knapsack constraint across all teams simultaneously.
+ *   - When a team's `vehicleCapacity` is set: sum(demand of origins
+ *     assigned to THAT team alone) must not exceed it -- a per-team
+ *     knapsack constraint, independent of the shared one above. undefined
+ *     (the default) leaves a team unconstrained by its own capacity,
+ *     exactly as every call site predating Phase 7 already behaves.
  *   - Objective: maximize total priority collected -- credited once per
  *     origin, via whichever single arc (from any team, from any
  *     predecessor) the solution actually uses to reach it.
@@ -90,6 +97,11 @@ export interface ExactTeamInput {
    * elapsedMinutes, so computeRelativeWindow returns windows relative to
    * THIS team's "now" -- again mirroring the existing per-team convention. */
   shiftedGameStartMinutesOfDay: number;
+  /** This team's own van capacity (Phase 7) -- a PER-TEAM bound, distinct
+   * from the shared shelter-capacity knapsack below (which is summed
+   * across every team). undefined = unconstrained, the same as every
+   * caller before this field existed. */
+  vehicleCapacity?: number;
 }
 
 export interface ExactPlanInput {
@@ -298,6 +310,11 @@ export async function computeExactPlan(input: ExactPlanInput): Promise<ExactPlan
     constraints.push(`${nextConstraintName()}: ${incomingToEnd.join(" + ")} = 1`);
 
     // Flow conservation + "visited at most once BY THIS TEAM" per origin.
+    // Also accumulates this team's own vehicle-capacity terms (Phase 7) --
+    // each origin's "incoming" sum below is exactly 0 or 1 (visited by
+    // this team or not), so demand * incoming is the right per-origin
+    // contribution to this team's own onboard-capacity constraint.
+    const vehicleCapacityTerms: string[] = [];
     for (const o of reachableOrigins) {
       const incoming: string[] = [arcVarName.get(arcKey(k, "start", o))!];
       const outgoing: string[] = [arcVarName.get(arcKey(k, o, "end"))!];
@@ -308,6 +325,12 @@ export async function computeExactPlan(input: ExactPlanInput): Promise<ExactPlan
         const outV = arcVarName.get(arcKey(k, o, other));
         if (outV) outgoing.push(outV);
       }
+
+      const demandOfO = demandOf(o);
+      if (team.vehicleCapacity !== undefined && demandOfO > 0) {
+        for (const v of incoming) vehicleCapacityTerms.push(`${demandOfO} ${v}`);
+      }
+
       // LP format has no parentheses -- the minus sign is distributed
       // across every outgoing term explicitly instead of grouping them.
       const negatedOutgoing = outgoing.map((v) => `- ${v}`).join(" ");
@@ -320,6 +343,15 @@ export async function computeExactPlan(input: ExactPlanInput): Promise<ExactPlan
       const tVar = timeVarName.get(`${k}|${o}`)!;
       constraints.push(`${nextConstraintName()}: ${tVar} - ${bigM} ${inflowSum} >= ${window.effectiveOpenMinutes - bigM}`);
       constraints.push(`${nextConstraintName()}: ${tVar} + ${bigM} ${inflowSum} <= ${window.closeMinutes + bigM}`);
+    }
+
+    // This team's own vehicle-capacity bound (Phase 7) -- a per-team
+    // knapsack constraint, distinct from the shared shelter-capacity one
+    // below (which sums across every team). Added as a simple additional
+    // row; it changes neither the variable count nor anything else in
+    // the formulation.
+    if (team.vehicleCapacity !== undefined && vehicleCapacityTerms.length > 0) {
+      constraints.push(`${nextConstraintName()}: ${vehicleCapacityTerms.join(" + ")} <= ${team.vehicleCapacity}`);
     }
 
     // Time propagation along every usable arc (standard VRPTW big-M link,

@@ -21,6 +21,64 @@ const BASE = {
   timeLimitSeconds: 15,
 };
 
+describe("computeExactPlan vehicle capacity (Phase 7)", () => {
+  it("is unaffected when vehicleCapacity is left undefined", async () => {
+    const withoutCapacity = await computeExactPlan({
+      ...BASE,
+      teams: [{ teamId: 1, currentNodeId: depotId, remainingMinutes: 600, shiftedGameStartMinutesOfDay: 9 * 60 }],
+      remainingCapacity: shelterCapacity,
+    });
+    const withUndefinedCapacity = await computeExactPlan({
+      ...BASE,
+      teams: [
+        { teamId: 1, currentNodeId: depotId, remainingMinutes: 600, shiftedGameStartMinutesOfDay: 9 * 60, vehicleCapacity: undefined },
+      ],
+      remainingCapacity: shelterCapacity,
+    });
+    expect(withUndefinedCapacity.objectiveValue).toBe(withoutCapacity.objectiveValue);
+  }, 30_000);
+
+  it("never lets a single team's assigned demand exceed its own vehicleCapacity", async () => {
+    const result = await computeExactPlan({
+      ...BASE,
+      teams: [{ teamId: 1, currentNodeId: depotId, remainingMinutes: 600, shiftedGameStartMinutesOfDay: 9 * 60, vehicleCapacity: 150 }],
+      remainingCapacity: shelterCapacity,
+    });
+    expect(result.status).toBe("optimal");
+    expect(result.plans[0].route.totalDemandServed).toBeLessThanOrEqual(150);
+  }, 30_000);
+
+  it("applies vehicleCapacity independently per team", async () => {
+    const result = await computeExactPlan({
+      ...BASE,
+      teams: [
+        { teamId: 1, currentNodeId: depotId, remainingMinutes: 600, shiftedGameStartMinutesOfDay: 9 * 60, vehicleCapacity: 150 },
+        { teamId: 2, currentNodeId: depotId, remainingMinutes: 600, shiftedGameStartMinutesOfDay: 9 * 60 }, // unconstrained
+      ],
+      remainingCapacity: shelterCapacity,
+    });
+    expect(result.status).toBe("optimal");
+    const teamOne = result.plans.find((p) => p.teamId === 1)!;
+    expect(teamOne.route.totalDemandServed).toBeLessThanOrEqual(150);
+  }, 30_000);
+
+  it("can be strictly more restrictive than the shared shelter capacity alone", async () => {
+    const unconstrained = await computeExactPlan({
+      ...BASE,
+      teams: [{ teamId: 1, currentNodeId: depotId, remainingMinutes: 600, shiftedGameStartMinutesOfDay: 9 * 60 }],
+      remainingCapacity: shelterCapacity,
+    });
+    expect(unconstrained.plans[0].route.totalDemandServed).toBeGreaterThan(50);
+
+    const constrained = await computeExactPlan({
+      ...BASE,
+      teams: [{ teamId: 1, currentNodeId: depotId, remainingMinutes: 600, shiftedGameStartMinutesOfDay: 9 * 60, vehicleCapacity: 50 }],
+      remainingCapacity: shelterCapacity,
+    });
+    expect(constrained.plans[0].route.totalDemandServed).toBeLessThanOrEqual(50);
+  }, 30_000);
+});
+
 describe("computeExactPlan (HiGHS MILP benchmark)", () => {
   it("solves to optimality on the real evacuation scenario with one team", async () => {
     const result = await computeExactPlan({
