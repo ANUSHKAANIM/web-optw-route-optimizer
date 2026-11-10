@@ -8,7 +8,6 @@ import {
   loadIdaliaScenario,
   VANS_PER_SHELTER,
   VAN_SHIFT_MINUTES,
-  COMMIT_WINDOW_MINUTES,
   SOLVER_TIER_THRESHOLDS,
   type SolverTier,
   type IdaliaStaticScenario,
@@ -21,9 +20,9 @@ import {
  * structural difference: there's no CycloneForecastEngine here, because
  * this forecast cone already happened -- priority per tract is a FIXED
  * real reward, not something that evolves tick to tick. "Advance Tick"
- * therefore doesn't move a storm; it just lets committed vans become free
- * again and triggers a fresh replan, same mechanical effect the commit
- * window (tau) has in the synthetic version.
+ * just lets simulated time move forward and triggers a fresh replan of
+ * every van, unconditionally -- no commit window, so a rerouted path is
+ * followed immediately rather than waiting out a timer.
  *
  * Fleet-wide (cross-shelter) reassignment is deliberately NOT implemented
  * here, per the explicit instruction that excluded it -- every van stays
@@ -37,7 +36,6 @@ export interface VanState {
   currentNodeId: string;
   remainingMinutes: number;
   shiftedGameStartMinutesOfDay: number;
-  committedUntilMinutes: number;
   pinnedCellId?: string;
 }
 
@@ -64,7 +62,6 @@ function buildVans(clusters: GraphCluster[]): Map<number, VanState> {
         currentNodeId: cluster.shelterId,
         remainingMinutes: VAN_SHIFT_MINUTES,
         shiftedGameStartMinutesOfDay: 9 * 60,
-        committedUntilMinutes: 0,
       });
       vanId++;
     }
@@ -164,7 +161,6 @@ async function replan(session: IdaliaSession, nowMinutes: number, vanIds: number
       for (const stop of result.route.stops) visited.add(stop.nodeId);
       demandServedSoFar += result.route.totalDemandServed;
       van.pinnedCellId = undefined;
-      van.committedUntilMinutes = nowMinutes + (result.route.stops[0]?.departureMinutes ?? COMMIT_WINDOW_MINUTES);
     }
 
     if (unpinned.length > 0) {
@@ -188,8 +184,6 @@ async function replan(session: IdaliaSession, nowMinutes: number, vanIds: number
       });
       for (const [teamId, route] of result.routesByTeam) {
         routes.set(teamId, route);
-        const van = session.vans.get(teamId)!;
-        van.committedUntilMinutes = nowMinutes + (route.stops[0]?.departureMinutes ?? COMMIT_WINDOW_MINUTES);
       }
     }
   }
@@ -200,10 +194,8 @@ async function replan(session: IdaliaSession, nowMinutes: number, vanIds: number
 export async function advanceTick(session: IdaliaSession, tickStepMinutes: number): Promise<Map<number, Route>> {
   const nextTick = session.currentTick + 1;
   const nowMinutes = nextTick * tickStepMinutes;
-  const freeVanIds = Array.from(session.vans.values())
-    .filter((v) => nowMinutes >= v.committedUntilMinutes)
-    .map((v) => v.vanId);
-  const routes = await replan(session, nowMinutes, freeVanIds);
+  const allVanIds = Array.from(session.vans.keys());
+  const routes = await replan(session, nowMinutes, allVanIds);
   session.currentTick = nextTick;
   return routes;
 }
@@ -215,8 +207,6 @@ export async function onVanArrival(session: IdaliaSession, vanId: number, cellId
   if (shelterId) {
     session.demandServedByShelter.set(shelterId, (session.demandServedByShelter.get(shelterId) ?? 0) + demand);
   }
-  const van = session.vans.get(vanId);
-  if (van) van.committedUntilMinutes = nowMinutes;
   return replan(session, nowMinutes, [vanId]);
 }
 
@@ -224,6 +214,5 @@ export async function onHumanOverride(session: IdaliaSession, vanId: number, cel
   const van = session.vans.get(vanId);
   if (!van) return new Map();
   van.pinnedCellId = cellId;
-  van.committedUntilMinutes = nowMinutes;
   return replan(session, nowMinutes, [vanId]);
 }

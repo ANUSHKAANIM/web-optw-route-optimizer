@@ -69,12 +69,9 @@ export interface ClusterRoutingInput {
   exactTimeLimitSeconds?: number;
   exactSolver?: "highs" | "cplex";
   /** Per-cell forecast-driven evacuation deadline -- see
-   * FeasibilityInput.deadlineWindows. Only honored by the greedy tier
-   * today (computeBaselineRoute); the exact MILP and neural tiers don't
-   * consume it yet -- a known, documented gap, not a silent omission. A
-   * cluster routed by exact/neural still respects every OTHER constraint
-   * (time window, capacity); it just doesn't additionally narrow a node's
-   * window to the forecast's own deadline the way greedy now does. */
+   * FeasibilityInput.deadlineWindows. Honored by every tier (exact MILP,
+   * neural, greedy), so a cell past its deadline is infeasible no matter
+   * which solver routes the cluster. */
   deadlineWindows?: ReadonlyMap<string, RelativeWindow | null>;
 }
 
@@ -128,6 +125,7 @@ export async function routeCluster(input: ClusterRoutingInput): Promise<ClusterR
       weekday,
       timeLimitSeconds: input.exactTimeLimitSeconds,
       solver: input.exactSolver,
+      deadlineWindows: input.deadlineWindows,
     });
 
     const routesByTeam = new Map(result.plans.map((p) => [p.teamId, p.route]));
@@ -156,12 +154,13 @@ export async function routeCluster(input: ClusterRoutingInput): Promise<ClusterR
       shelterCapacity,
       alreadyVisited: visited,
       vehicleCapacity: team.vehicleCapacity,
+      deadlineWindows: input.deadlineWindows,
     };
 
     const route =
       method === "neural"
         ? await computeNeuralRoute(solveInput)
-        : computeBaselineRoute({ ...solveInput, deadlineWindows: input.deadlineWindows });
+        : computeBaselineRoute(solveInput);
 
     routesByTeam.set(team.teamId, route);
     for (const stop of route.stops) visited.add(stop.nodeId);

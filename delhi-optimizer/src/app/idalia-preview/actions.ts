@@ -38,7 +38,7 @@ export async function advanceTick(): Promise<void> {
   if (!session) return;
   const routes = await advanceTickSession(session, TICK_STEP_MINUTES);
   for (const [vanId, route] of routes) session.vanRoutes.set(vanId, route);
-  logEvent(session, `Tick ${session.currentTick}: ${routes.size} van(s) outside their commit window were replanned.`);
+  logEvent(session, `Tick ${session.currentTick}: ${routes.size} van(s) replanned.`);
   safeRevalidate();
 }
 

@@ -12,10 +12,11 @@ import { advanceTick, simulateArrival, overrideVan, setSolverTier } from "./acti
  * forecast-cone dataset, run through the real solver stack (exact MILP /
  * neural Pointer Network + beam search / greedy -- session.ts's replan()
  * uses the same routeCluster/routeTeamWithPin dispatcher /rolling-horizon
- * does) with genuine event-driven state: commit windows, masked
- * (evacuated) tracts, human override, and a tick loop -- the real
- * counterpart to /rolling-horizon, on real tract data instead of a
- * synthetic forecast.
+ * does) with genuine event-driven state: masked (evacuated) tracts, human
+ * override, and a tick loop -- the real counterpart to /rolling-horizon,
+ * on real tract data instead of a synthetic forecast. No commit window:
+ * every van is replanned on every tick, so a rerouted path is followed
+ * immediately.
  *
  * What's intentionally different from /rolling-horizon: there's no
  * forecast engine here (the real cone already happened, so priority per
@@ -55,7 +56,6 @@ export default async function IdaliaPreviewPage({
   const { scenario, nodesById, cellIdToShelterId, vanRoutes, currentTick, solverTier, log } = session;
   const { cells, clusters, priorities, rewardByNodeId } = scenario;
   const vans = Array.from(session.vans.values());
-  const nowMinutesDisplay = Math.max(0, currentTick) * TICK_STEP_MINUTES;
 
   if (currentTick < 0) {
     return (
@@ -63,8 +63,8 @@ export default async function IdaliaPreviewPage({
         <h1 className="text-2xl font-bold tracking-tight">Hurricane Idalia -- real census-tract live session</h1>
         <p className="mt-3 text-sm text-muted-foreground">
           {cells.filter((c) => c.role === "origin").length.toLocaleString()} real tracts, {clusters.length} shelters,{" "}
-          {vans.length} vans. Starting runs the real solver stack for the first time -- tick 0, 30-minute commit window
-          (tau), no fleet-wide reassignment.
+          {vans.length} vans. Starting runs the real solver stack for the first time -- tick 0, every van replanned
+          every tick, no fleet-wide reassignment.
         </p>
         <form action={advanceTick} className="mt-5">
           <button type="submit" className="rounded border px-4 py-2 hover:bg-accent">
@@ -136,8 +136,7 @@ export default async function IdaliaPreviewPage({
     const shelterId = cellIdToShelterId.get(cellId);
     const shelterVans = vans.filter((v) => v.currentNodeId === shelterId);
     if (shelterVans.length === 0) return "No van assigned to its nearest shelter";
-    const allBusy = shelterVans.every((v) => v.committedUntilMinutes - nowMinutesDisplay > 0);
-    return allBusy ? "Nearest shelter's van(s) still committed elsewhere" : "Not currently reachable (time budget or capacity)";
+    return "Not currently reachable (time budget or capacity)";
   };
 
   const remainingTracts = cells
@@ -182,8 +181,8 @@ export default async function IdaliaPreviewPage({
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           {vans.length} vans across {clusters.length} real shelters. No fleet-wide reassignment across shelters -- each van
-          stays in its own shelter&apos;s cluster. Each tick = {TICK_STEP_MINUTES} simulated minutes, smaller than the
-          30-minute commit window, so a van committed this tick is often still committed next tick too.
+          stays in its own shelter&apos;s cluster. Each tick = {TICK_STEP_MINUTES} simulated minutes, and every van is
+          replanned on every tick -- no commit window, so a rerouted path is followed immediately.
         </p>
         <div className="mt-2 max-h-16 overflow-y-auto rounded border bg-muted/30 p-2 text-xs text-muted-foreground">
           {log.length === 0 ? "No events yet." : log.map((entry, i) => <p key={i}>{entry}</p>)}
@@ -233,7 +232,6 @@ export default async function IdaliaPreviewPage({
             )}
             <ul className="max-h-72 space-y-1.5 overflow-y-auto">
               {vans.map((v) => {
-                const freeInMinutes = v.committedUntilMinutes - nowMinutesDisplay;
                 const stops = routeStopNames(v.vanId);
                 return (
                   <li key={v.vanId} className="rounded border border-border/40 p-1.5 text-xs">
@@ -242,17 +240,9 @@ export default async function IdaliaPreviewPage({
                         <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: VAN_COLORS[v.vanId % VAN_COLORS.length] }} />
                         Van {v.vanId + 1}
                       </span>
-                      <span className="flex items-center gap-2">
-                        <span
-                          className={freeInMinutes > 0 ? "text-amber-400" : "text-emerald-400"}
-                          title={`committedUntilMinutes=${Math.round(v.committedUntilMinutes)}, now=${Math.round(nowMinutesDisplay)}`}
-                        >
-                          {freeInMinutes > 0 ? `committed ${Math.round(freeInMinutes)}m` : "free"}
-                        </span>
-                        <Link href={selectUrl(selectedVanId === v.vanId ? undefined : v.vanId)} className="text-sky-400 underline">
-                          {selectedVanId === v.vanId ? "cancel" : "select"}
-                        </Link>
-                      </span>
+                      <Link href={selectUrl(selectedVanId === v.vanId ? undefined : v.vanId)} className="text-sky-400 underline">
+                        {selectedVanId === v.vanId ? "cancel" : "select"}
+                      </Link>
                     </div>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       {stops.length === 0 ? idleReason(v) : <>Path: shelter → {stops.join(" → ")} → shelter</>}

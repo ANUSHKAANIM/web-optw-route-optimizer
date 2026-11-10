@@ -14,9 +14,9 @@ import type { GraphNode } from "@/types/graph";
  * logic this is a thin loader over.
  *
  * This file is now just the one-time scenario build (cells + clusters +
- * static priorities) -- the stateful, interactive layer (vans, commit
- * windows, evacuation, replanning) lives in session.ts, same split
- * /rolling-horizon uses between its own scene build and session.ts.
+ * static priorities) -- the stateful, interactive layer (vans,
+ * evacuation, replanning) lives in session.ts, same split /rolling-horizon
+ * uses between its own scene build and session.ts.
  */
 export const REAL_CSV_PATH = path.join(process.cwd(), "src/data/raw/census-tracts-idalia.csv");
 export const VAN_COLORS = ["#38bdf8", "#f472b6", "#a3e635", "#fb923c", "#c084fc", "#2dd4bf"];
@@ -24,7 +24,6 @@ export const SHELTER_COUNT = 75;
 export const VANS_PER_SHELTER = 2;
 export const SEED = 2023;
 export const VAN_SHIFT_MINUTES = 480;
-export const COMMIT_WINDOW_MINUTES = 30;
 export const TICK_STEP_MINUTES = 15;
 
 export type SolverTier = "fast" | "real";

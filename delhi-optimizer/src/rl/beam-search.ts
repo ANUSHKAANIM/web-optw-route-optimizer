@@ -1,6 +1,6 @@
 import type { Graph, Weekday } from "@/types/graph";
 import type { Route } from "@/types/game";
-import { computeNodeStates, computeRelativeWindow, planArrival } from "@/optimization/feasibility";
+import { computeNodeStates, effectiveWindow, planArrival, type RelativeWindow } from "@/optimization/feasibility";
 import { buildStepFeatures, buildAdjacencyMask } from "./features";
 import { runInferenceStep, initialDecoderState, embeddingForNode, type DecoderState } from "./inference";
 
@@ -46,6 +46,10 @@ export interface BeamSearchInput {
    * shared shelterCapacity. undefined = unconstrained, same as every
    * caller before this field existed. */
   vehicleCapacity?: number;
+  /** Per-cell forecast-driven evacuation deadline -- same contract as
+   * FeasibilityInput.deadlineWindows. Applied to the feasibility mask, so
+   * the model can never pick a cell it would reach after its deadline. */
+  deadlineWindows?: ReadonlyMap<string, RelativeWindow | null>;
 }
 
 interface PathStop {
@@ -93,6 +97,7 @@ export async function computeNeuralRoute(input: BeamSearchInput): Promise<Route>
     beamWidth = DEFAULT_BEAM_WIDTH,
     maxDepth,
     vehicleCapacity,
+    deadlineWindows,
   } = input;
 
   const initialVisited = new Set<string>([currentNodeId, ...(alreadyVisited ?? [])]);
@@ -140,6 +145,7 @@ export async function computeNeuralRoute(input: BeamSearchInput): Promise<Route>
         shelterCapacity,
         vehicleCapacity,
         onboardDemandSoFar: beam.onboardDemandSoFar,
+        deadlineWindows,
       });
       const feasibleIds = new Set(states.filter((s) => s.feasible).map((s) => s.nodeId));
       if (feasibleIds.size === 0) {
@@ -175,7 +181,7 @@ export async function computeNeuralRoute(input: BeamSearchInput): Promise<Route>
 
       for (const idx of topIndices) {
         const node = graph.nodes[idx];
-        const window = computeRelativeWindow(node, weekday, gameStartMinutesOfDay);
+        const window = effectiveWindow(node, weekday, gameStartMinutesOfDay, deadlineWindows?.get(node.id));
         if (!window) continue; // defensive; feasible=true implies this can't happen
         const plan = planArrival(graph, beam.currentNodeId, node.id, beam.elapsedMinutes, window, node.serviceDurationMinutes);
         const reward = priorities.get(node.id) ?? 0;

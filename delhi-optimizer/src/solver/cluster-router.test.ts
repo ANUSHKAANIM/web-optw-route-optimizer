@@ -125,3 +125,33 @@ describe("routeCluster exact tier", () => {
     expect(new Set(assigned).size).toBe(assigned.length);
   }, 30_000);
 });
+
+describe("routeCluster forecast deadlines", () => {
+  // Every origin's forecast deadline already passed -> no tier may visit any.
+  const expired = new Map(
+    EVACUATION_NODES.filter((n) => n.role === "origin").map((n) => [n.id, { effectiveOpenMinutes: 0, closeMinutes: -1 }]),
+  );
+  const tiers = [
+    { name: "exact", thresholds: { maxCandidatesForExact: ORIGIN_COUNT, maxCandidatesForNeural: ORIGIN_COUNT } },
+    { name: "neural", thresholds: { maxCandidatesForExact: 0, maxCandidatesForNeural: ORIGIN_COUNT } },
+    { name: "greedy", thresholds: { maxCandidatesForExact: 0, maxCandidatesForNeural: 0 } },
+  ] as const;
+
+  for (const tier of tiers) {
+    it(`${tier.name} visits origins without deadlines but skips every origin past its deadline`, async () => {
+      const originStops = async (deadlineWindows?: typeof expired) => {
+        const result = await routeCluster({
+          ...BASE,
+          teams: oneTeam(),
+          thresholds: tier.thresholds,
+          exactTimeLimitSeconds: 15,
+          deadlineWindows,
+        });
+        expect(result.method).toBe(tier.name);
+        return result.routesByTeam.get(1)!.stops.filter((s) => s.nodeId !== depotId).length;
+      };
+      expect(await originStops()).toBeGreaterThan(0);
+      expect(await originStops(expired)).toBe(0);
+    }, 60_000);
+  }
+});

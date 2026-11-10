@@ -1,6 +1,6 @@
-import type { Graph, Weekday } from "@/types/graph";
+import type { Graph, GraphNode, Weekday } from "@/types/graph";
 import type { Route } from "@/types/game";
-import { computeRelativeWindow, planArrival } from "@/optimization/feasibility";
+import { effectiveWindow, planArrival, type RelativeWindow } from "@/optimization/feasibility";
 import { solveWithCplex, type LpSolveResult } from "./cplex-solver";
 
 /**
@@ -123,6 +123,12 @@ export interface ExactPlanInput {
    * doc comment -- and reports `solverStatus: "Unavailable"` rather than
    * silently falling back to HiGHS if it can't run. */
   solver?: "highs" | "cplex";
+  /** Per-cell forecast-driven evacuation deadline (CycloneForecastEngine's
+   * CellForecastResult.window), relative to the same "now" every team's
+   * elapsedMinutes starts from. Narrows a node's static window exactly as
+   * the greedy tier does (feasibility.ts effectiveWindow), so a cell past
+   * its deadline becomes genuinely infeasible in the model. */
+  deadlineWindows?: ReadonlyMap<string, RelativeWindow | null>;
 }
 
 export interface ExactTeamPlan {
@@ -218,6 +224,8 @@ export async function computeExactPlan(input: ExactPlanInput): Promise<ExactPlan
   const demandOf = (nodeId: string) => graph.nodesById.get(nodeId)?.demand ?? 0;
   const serviceDurationOf = (nodeId: string) => graph.nodesById.get(nodeId)?.serviceDurationMinutes ?? 0;
   const travel = (a: string, b: string) => graph.travelTimeMinutes.get(a)?.get(b) ?? Number.POSITIVE_INFINITY;
+  const windowOf = (node: GraphNode, team: ExactTeamInput) =>
+    effectiveWindow(node, weekday, team.shiftedGameStartMinutesOfDay, input.deadlineWindows?.get(node.id));
 
   const maxBudget = Math.max(1, ...teams.map((t) => t.remainingMinutes));
   const bigM = maxBudget + candidateOriginIds.reduce((sum, id) => sum + serviceDurationOf(id), 0) + BIG_M_SLACK;
@@ -273,7 +281,7 @@ export async function computeExactPlan(input: ExactPlanInput): Promise<ExactPlan
 
     const reachableOrigins: string[] = [];
     for (const originId of candidateOriginIds) {
-      const window = computeRelativeWindow(graph.nodesById.get(originId)!, weekday, team.shiftedGameStartMinutesOfDay);
+      const window = windowOf(graph.nodesById.get(originId)!, team);
       if (!window) continue;
       const planToOrigin = planArrival(graph, team.currentNodeId, originId, 0, window, serviceDurationOf(originId));
       if (!planToOrigin.canFinishBeforeClosing) continue;
@@ -294,7 +302,7 @@ export async function computeExactPlan(input: ExactPlanInput): Promise<ExactPlan
     for (const a of reachableOrigins) {
       for (const b of reachableOrigins) {
         if (a === b) continue;
-        const window = computeRelativeWindow(graph.nodesById.get(b)!, weekday, team.shiftedGameStartMinutesOfDay);
+        const window = windowOf(graph.nodesById.get(b)!, team);
         if (!window) continue;
         const v = recordArc(k, a, b);
         binaryVars.push(v);
@@ -339,7 +347,7 @@ export async function computeExactPlan(input: ExactPlanInput): Promise<ExactPlan
 
       // Time-window bounds, conditional on being visited by k (big-M).
       const inflowSum = incoming.join(" + ");
-      const window = computeRelativeWindow(graph.nodesById.get(o)!, weekday, team.shiftedGameStartMinutesOfDay)!;
+      const window = windowOf(graph.nodesById.get(o)!, team)!;
       const tVar = timeVarName.get(`${k}|${o}`)!;
       constraints.push(`${nextConstraintName()}: ${tVar} - ${bigM} ${inflowSum} >= ${window.effectiveOpenMinutes - bigM}`);
       constraints.push(`${nextConstraintName()}: ${tVar} + ${bigM} ${inflowSum} <= ${window.closeMinutes + bigM}`);
@@ -491,7 +499,7 @@ export async function computeExactPlan(input: ExactPlanInput): Promise<ExactPlan
       const next = nextFrom.get(cursor);
       if (!next || next === "end") break;
       const node = graph.nodesById.get(next)!;
-      const window = computeRelativeWindow(node, weekday, team.shiftedGameStartMinutesOfDay)!;
+      const window = windowOf(node, team)!;
       const plan = planArrival(graph, previousNodeId, next, elapsedMinutes, window, node.serviceDurationMinutes);
       const reward = priorities.get(next) ?? 0;
       const demandServed = node.role === "origin" ? node.demand : 0;

@@ -7,11 +7,10 @@ import { RollingHorizonController, type VanState } from "./rolling-horizon-contr
 const FORECAST_INTERVAL_SECONDS = 8 * 3600;
 const SESSION_STARTED_AT = new Date("2026-01-01T00:00:00Z");
 
-function makeController(cellCount: number, clusterCount: number, commitWindowMinutes = 30, lookaheadMinutes?: number) {
+function makeController(cellCount: number, clusterCount: number, lookaheadMinutes?: number) {
   const cells = new SyntheticCellProvider({ cellCount, clusterCount, seed: 11 }).getNodes();
   const clusters = buildClusteredGraph(cells);
   const controller = new RollingHorizonController(cells, clusters, 11, SESSION_STARTED_AT, FORECAST_INTERVAL_SECONDS, {
-    commitWindowMinutes,
     lookaheadMinutes,
     weekday: "monday",
     thresholds: { maxCandidatesForExact: 0, maxCandidatesForNeural: 0 }, // force greedy tier -- fast, deterministic
@@ -26,31 +25,37 @@ function vanAtShelter(controller: RollingHorizonController, clusters: ReturnType
     currentNodeId: cluster.shelterId,
     remainingMinutes: 600,
     shiftedGameStartMinutesOfDay: 9 * 60,
-    committedUntilMinutes: 0,
   };
   controller.registerVan(van);
   return van;
 }
 
 describe("RollingHorizonController.onForecastTick", () => {
-  it("produces a route for every free van and respects the commit window for vans that aren't free yet", async () => {
+  it("produces a route for every registered van on the very first tick", async () => {
     const { clusters, controller } = makeController(300, 5);
     vanAtShelter(controller, clusters, 1, 0);
-    const van2 = vanAtShelter(controller, clusters, 2, 0);
-    van2.committedUntilMinutes = 1000; // still mid-leg, well past "now"
+    vanAtShelter(controller, clusters, 2, 0);
 
     const routes = await controller.onForecastTick(0, 0);
     expect(routes.has(1)).toBe(true);
-    expect(routes.has(2)).toBe(false);
+    expect(routes.has(2)).toBe(true);
   });
 
-  it("updates each replanned van's committedUntilMinutes based on its new first stop", async () => {
+  it("has no commit window: every van is replanned again on the very next tick, even one planned moments ago", async () => {
     const { clusters, controller } = makeController(300, 5);
     vanAtShelter(controller, clusters, 1, 0);
+    vanAtShelter(controller, clusters, 2, 0);
 
-    await controller.onForecastTick(0, 0);
-    const van = controller.getVan(1)!;
-    expect(van.committedUntilMinutes).toBeGreaterThanOrEqual(0);
+    const tick0Routes = await controller.onForecastTick(0, 0);
+    expect(tick0Routes.has(1)).toBe(true);
+    expect(tick0Routes.has(2)).toBe(true);
+
+    // A new forecast tick one minute later -- old behavior (a commit
+    // window/tau) would have skipped both vans here as "still committed".
+    // There is no such protection anymore: both are replanned immediately.
+    const tick1Routes = await controller.onForecastTick(1, 1);
+    expect(tick1Routes.has(1)).toBe(true);
+    expect(tick1Routes.has(2)).toBe(true);
   });
 });
 
@@ -66,70 +71,37 @@ describe("RollingHorizonController.onVanArrival", () => {
     expect(firstStop, "test fixture needs van 1 to have at least one stop").toBeDefined();
 
     await controller.onVanArrival(1, firstStop!, 10);
-    // Force van 2 free regardless of its own commit window from the first
-    // tick -- this test is specifically about masking persisting across
-    // ticks, not about commit-window timing (covered separately above).
-    controller.getVan(2)!.committedUntilMinutes = 0;
     const laterRoutes = await controller.onForecastTick(1, 20);
     const vanTwoRoute = laterRoutes.get(2);
     expect(vanTwoRoute, "van 2 should have been replanned").toBeDefined();
     expect(vanTwoRoute!.stops.map((s) => s.nodeId)).not.toContain(firstStop);
   });
 
-  it("frees the arriving van's commit window immediately, even if it was still mid-leg", async () => {
+  it("replans the arriving van's own route immediately", async () => {
     const { clusters, controller } = makeController(300, 5);
     const van = vanAtShelter(controller, clusters, 1, 0);
-    van.committedUntilMinutes = 1000;
+    await controller.onForecastTick(0, 0);
 
-    await controller.onVanArrival(1, van.currentNodeId, 50);
-    expect(van.committedUntilMinutes).toBeLessThanOrEqual(50 + 1); // reset to "now", not still 1000
-  });
-});
-
-describe("RollingHorizonController commit window (tau) across tick boundaries", () => {
-  it("keeps a van committed across a tick if the tick step is smaller than tau, and frees it once tau elapses", async () => {
-    const TICK_STEP_MINUTES = 15;
-    const { clusters, controller } = makeController(300, 5, 30); // tau = 30min, 2x the tick step
-    vanAtShelter(controller, clusters, 1, 0);
-
-    const tick0Routes = await controller.onForecastTick(0, 0 * TICK_STEP_MINUTES);
-    expect(tick0Routes.has(1), "van should be replanned on the very first tick").toBe(true);
-    const committedUntil = controller.getVan(1)!.committedUntilMinutes;
-
-    // Only meaningful if the van's own first-leg commitment actually
-    // extends past one tick step -- otherwise this test can't observe
-    // tau blocking anything (it would just always be free, same bug
-    // this test exists to catch regressing back to).
-    if (committedUntil <= 1 * TICK_STEP_MINUTES) return;
-
-    const tick1Routes = await controller.onForecastTick(1, 1 * TICK_STEP_MINUTES);
-    expect(tick1Routes.has(1), "van should still be committed one tick step later and skipped").toBe(false);
-
-    // Advance ticks until tau has genuinely elapsed, then confirm it's
-    // replanned again.
-    let lastRoutes = tick1Routes;
-    for (let t = 2; t * TICK_STEP_MINUTES <= committedUntil + TICK_STEP_MINUTES; t++) {
-      lastRoutes = await controller.onForecastTick(t, t * TICK_STEP_MINUTES);
-    }
-    expect(lastRoutes.has(1), "van should be free and replanned again once its commitment has elapsed").toBe(true);
+    const routes = await controller.onVanArrival(1, van.currentNodeId, 50);
+    expect(routes.has(1)).toBe(true);
   });
 });
 
 describe("RollingHorizonController lookaheadMinutes (H)", () => {
   it("never leaves a van's real remainingMinutes reduced, even when a tight H is configured", async () => {
-    const { clusters, controller } = makeController(300, 5, 30, 5);
+    const { clusters, controller } = makeController(300, 5, 5);
     const van = vanAtShelter(controller, clusters, 1, 0);
     await controller.onForecastTick(0, 0);
     expect(van.remainingMinutes).toBe(600); // the van's actual budget is untouched by H
   });
 
   it("plans fewer or equal stops under a tight lookahead than with an unbounded one, on the same scenario", async () => {
-    const unbounded = makeController(300, 5, 30, undefined);
+    const unbounded = makeController(300, 5, undefined);
     vanAtShelter(unbounded.controller, unbounded.clusters, 1, 0);
     const unboundedRoutes = await unbounded.controller.onForecastTick(0, 0);
     const unboundedStops = unboundedRoutes.get(1)?.stops.length ?? 0;
 
-    const tight = makeController(300, 5, 30, 5); // only 5 minutes of planning horizon
+    const tight = makeController(300, 5, 5); // only 5 minutes of planning horizon
     vanAtShelter(tight.controller, tight.clusters, 1, 0);
     const tightRoutes = await tight.controller.onForecastTick(0, 0);
     const tightStops = tightRoutes.get(1)?.stops.length ?? 0;
@@ -151,7 +123,6 @@ describe("RollingHorizonController Phase B (fleet-wide reward-aware assignment)"
     emptyHomeClusters[0] = { shelterId: clusters[0].shelterId, graph: buildGraph([shelterNode]) };
 
     const controller = new RollingHorizonController(cells, emptyHomeClusters, 11, SESSION_STARTED_AT, FORECAST_INTERVAL_SECONDS, {
-      commitWindowMinutes: 30,
       weekday: "monday",
       thresholds: { maxCandidatesForExact: 0, maxCandidatesForNeural: 0 },
     });
@@ -160,7 +131,6 @@ describe("RollingHorizonController Phase B (fleet-wide reward-aware assignment)"
       currentNodeId: emptyHomeClusters[0].shelterId,
       remainingMinutes: 100_000, // effectively unlimited -- reachability should never be the blocker here
       shiftedGameStartMinutesOfDay: 9 * 60,
-      committedUntilMinutes: 0,
     };
     controller.registerVan(van);
 
@@ -186,10 +156,9 @@ describe("RollingHorizonController Phase B (fleet-wide reward-aware assignment)"
 });
 
 describe("RollingHorizonController.onHumanOverride", () => {
-  it("honors a reachable override as the van's first stop and bypasses its commit window", async () => {
+  it("honors a reachable override as the van's first stop", async () => {
     const { cells, clusters, controller } = makeController(300, 5);
     const van = vanAtShelter(controller, clusters, 1, 0);
-    van.committedUntilMinutes = 1000; // would normally block replanning
 
     const cluster = clusters[0];
     const targetCell = cluster.graph.nodes.find((n) => n.role === "origin")!.id;
@@ -199,5 +168,6 @@ describe("RollingHorizonController.onHumanOverride", () => {
     const routes = await controller.onHumanOverride(1, targetCell, 5);
     expect(routes.get(1)?.stops[0]?.nodeId).toBe(targetCell);
     void cells;
+    void van;
   });
 });

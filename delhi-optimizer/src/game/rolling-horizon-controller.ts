@@ -15,17 +15,22 @@ import { computeBaselineRoute } from "@/optimization/baseline-policy";
  * Phase 5: wires Phases 1-4 into the actual rolling-horizon loop the
  * project's roadmap describes -- periodic forecast ticks (p = the 8-hour
  * cadence) combined with immediate event-driven replanning (a van
- * arriving somewhere), both respecting a commit window (tau) so a van
- * isn't yanked off a leg it's already partway through, AND an optional
- * bounded lookahead (H) so a replan reasons about only the next H
- * minutes of a van's budget, not its entire remaining time -- the full
- * (H, tau, p) structure from Haque, Hamid & Chaudhuri's rolling-horizon
- * railway rescheduling paper. H is applied purely as a planning-horizon
+ * arriving somewhere), plus an optional bounded lookahead (H) so a
+ * replan reasons about only the next H minutes of a van's budget, not
+ * its entire remaining time. H is applied purely as a planning-horizon
  * cap passed to the solvers (remainingMinutes is capped at H when H is
  * configured); the van's REAL remaining budget is unaffected -- it will
  * simply be re-planned again on the next tick/event with a fresh H-sized
  * window, which is the actual point of a rolling horizon: never commit
  * further ahead than you can trust the forecast to stay accurate for.
+ *
+ * No commit window (tau): every registered van is replanned on every
+ * forecast tick, unconditionally -- as soon as a new forecast lands, a
+ * van immediately follows whatever route that new information implies,
+ * even if it means abandoning a leg it was mid-way through. An earlier
+ * version protected a van's freshly planned leg from being torn up for a
+ * fixed number of minutes; that protection was removed on request so a
+ * rerouted path is followed immediately rather than waiting out a timer.
  *
  * This is intentionally a NEW, separate controller, not a change to the
  * existing replan.service.ts -- that service runs the already-deployed
@@ -40,20 +45,12 @@ export interface VanState {
   /** Minutes remaining before this van must be back at ITS shelter. */
   remainingMinutes: number;
   shiftedGameStartMinutesOfDay: number;
-  /** Minutes-from-session-start up to which this van's current committed
-   * leg must not be torn up by an automatic (non-override) replan --
-   * i.e. the commit window tau. 0 means "free to replan immediately." */
-  committedUntilMinutes: number;
   /** Set by onHumanOverride; cleared once that pin has been consumed by a
    * replan (honored or rejected). */
   pinnedCellId?: string;
 }
 
 export interface RollingHorizonConfig {
-  /** tau: minimum minutes a van's freshly (re)planned first leg is
-   * protected from being replanned again by the next automatic tick or
-   * event, even if one fires sooner. */
-  commitWindowMinutes: number;
   /** H: caps how far ahead a replan is allowed to plan, in minutes --
    * undefined means unbounded (plan the van's full remaining budget, the
    * pre-Phase-7.5 behavior). A van's actual remaining time is never
@@ -117,17 +114,17 @@ export class RollingHorizonController {
   }
 
   /** Periodic forecast cadence (every p). Advances the forecast engine one
-   * tick, then replans every van NOT currently inside its commit window.
-   * `thresholdsOverride`, when given, replaces this.config.thresholds for
-   * JUST this call -- lets a caller (e.g. a live page's fast/real solver
-   * toggle) pick the tier per-call without rebuilding the whole
-   * controller, which already exists mid-session with real state. */
+   * tick, then replans EVERY registered van, unconditionally -- as soon
+   * as a new forecast lands, every van follows whatever route that new
+   * information implies, immediately. `thresholdsOverride`, when given,
+   * replaces this.config.thresholds for JUST this call -- lets a caller
+   * (e.g. a live page's fast/real solver toggle) pick the tier per-call
+   * without rebuilding the whole controller, which already exists
+   * mid-session with real state. */
   async onForecastTick(tick: number, nowMinutes: number, thresholdsOverride?: ClusterRoutingThresholds): Promise<Map<number, Route>> {
     this.lastTick = this.forecastEngine.advanceTick(tick);
-    const freeVanIds = Array.from(this.vans.values())
-      .filter((v) => nowMinutes >= v.committedUntilMinutes)
-      .map((v) => v.vanId);
-    return this.replan(nowMinutes, freeVanIds, thresholdsOverride);
+    const allVanIds = Array.from(this.vans.keys());
+    return this.replan(nowMinutes, allVanIds, thresholdsOverride);
   }
 
   /** Event-driven: a van actually evacuated a cell. Masks it immediately
@@ -147,14 +144,11 @@ export class RollingHorizonController {
       this.demandServedByShelter.set(shelterId, (this.demandServedByShelter.get(shelterId) ?? 0) + demand);
     }
 
-    const van = this.vans.get(vanId);
-    if (van) van.committedUntilMinutes = nowMinutes;
     return this.replan(nowMinutes, [vanId], thresholdsOverride);
   }
 
-  /** Human override: pin a van to a specific cell, bypassing its commit
-   * window (an explicit human decision overrides the automatic freeze),
-   * and replan just that van. */
+  /** Human override: pin a van to a specific cell and replan just that
+   * van. */
   async onHumanOverride(
     vanId: number,
     cellId: string,
@@ -164,7 +158,6 @@ export class RollingHorizonController {
     const van = this.vans.get(vanId);
     if (!van) return new Map();
     van.pinnedCellId = cellId;
-    van.committedUntilMinutes = nowMinutes;
     return this.replan(nowMinutes, [vanId], thresholdsOverride);
   }
 
@@ -187,8 +180,18 @@ export class RollingHorizonController {
     // Per-cell forecast-driven evacuation deadline (Phase 7.5): narrows a
     // node's static openingHours window to whatever the forecast itself
     // says, instead of that deadline being computed and then discarded.
+    // The engine reports windows in minutes-from-session-start, but every
+    // solver starts its own clock at 0 = "now" (this replan), so shift each
+    // window back by nowMinutes -- otherwise a deadline that already passed
+    // would look hours away on every tick after the first.
     const deadlineWindows = new Map(
-      Array.from(this.lastTick.cellStates.entries(), ([cellId, state]) => [cellId, state.window] as const),
+      Array.from(this.lastTick.cellStates.entries(), ([cellId, state]) => [
+        cellId,
+        state.window && {
+          effectiveOpenMinutes: Math.max(state.window.effectiveOpenMinutes - nowMinutes, 0),
+          closeMinutes: state.window.closeMinutes - nowMinutes,
+        },
+      ] as const),
     );
     const positions: VanPosition[] = vanIds
       .map((id) => this.vans.get(id))
@@ -277,7 +280,6 @@ export class RollingHorizonController {
         for (const stop of result.route.stops) visited.add(stop.nodeId);
         demandServedSoFar += result.route.totalDemandServed;
         van.pinnedCellId = undefined;
-        van.committedUntilMinutes = nowMinutes + (result.route.stops[0]?.departureMinutes ?? this.config.commitWindowMinutes);
       }
 
       // Phase B may have sent a van here from a DIFFERENT shelter's zone
@@ -317,8 +319,6 @@ export class RollingHorizonController {
 
         for (const [teamId, route] of result.routesByTeam) {
           routes.set(teamId, route);
-          const van = this.vans.get(teamId)!;
-          van.committedUntilMinutes = nowMinutes + (route.stops[0]?.departureMinutes ?? this.config.commitWindowMinutes);
           for (const stop of route.stops) visited.add(stop.nodeId);
           demandServedSoFar += route.totalDemandServed;
         }
@@ -344,7 +344,6 @@ export class RollingHorizonController {
         routes.set(van.vanId, route);
         for (const stop of route.stops) visited.add(stop.nodeId);
         demandServedSoFar += route.totalDemandServed;
-        van.committedUntilMinutes = nowMinutes + (route.stops[0]?.departureMinutes ?? this.config.commitWindowMinutes);
       }
     }
 

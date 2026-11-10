@@ -52,16 +52,11 @@ const SESSION_STARTED_AT = new Date();
 export const FORECAST_INTERVAL_SECONDS = 8 * 3600;
 /** How much simulated wall-clock time ONE "Advance Tick" click
  * represents for replanning purposes -- deliberately NOT the same as
- * the 8h forecast cadence above. At 480min/tick, a van's ~30min commit
- * window (tau) always expires long before the next tick fires, so
- * EVERY van gets replanned EVERY tick regardless of tau -- the commit
- * window's blocking effect was real but never observable. 15 minutes,
- * smaller than tau (30min), means a van committed this tick is still
- * genuinely committed (and correctly skipped) on the next one or two
- * ticks -- the actual behavior tau is supposed to produce. */
+ * the 8h forecast cadence above. Every tick replans every van
+ * unconditionally (no commit window), so this just controls how finely
+ * the simulated clock advances between forecast reads. */
 export const TICK_STEP_MINUTES = 15;
 const LOOKAHEAD_MINUTES = 180; // H: this replan only reasons 3h ahead, not the full shift
-const COMMIT_WINDOW_MINUTES = 30; // tau
 const VAN_COUNT = 12;
 const VAN_SHIFT_MINUTES = 480; // 8-hour shift budget per van
 
@@ -89,7 +84,6 @@ function createSession(): RollingHorizonSession {
   const cells = new SyntheticCellProvider({ seed: SEED }).getNodes();
   const clusters = buildClusteredGraph(cells);
   const controller = new RollingHorizonController(cells, clusters, SEED, SESSION_STARTED_AT, FORECAST_INTERVAL_SECONDS, {
-    commitWindowMinutes: COMMIT_WINDOW_MINUTES,
     lookaheadMinutes: LOOKAHEAD_MINUTES,
     weekday: "monday",
     // Forced to the greedy tier: this page is clicked live in a browser,
@@ -113,7 +107,6 @@ function createSession(): RollingHorizonSession {
       currentNodeId: shelter.id,
       remainingMinutes: VAN_SHIFT_MINUTES,
       shiftedGameStartMinutesOfDay: 9 * 60,
-      committedUntilMinutes: 0,
     };
     controller.registerVan(van);
   }

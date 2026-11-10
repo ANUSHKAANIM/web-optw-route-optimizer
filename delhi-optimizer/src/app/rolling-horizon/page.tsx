@@ -10,14 +10,16 @@ import { advanceTick, simulateArrival, overrideVan, setSolverTier } from "./acti
 /**
  * The real, live RollingHorizonController (Phase 5) wired end-to-end --
  * not the simplified direct-tick-replay pattern /scale-preview and
- * /dashboard use. This page actually exercises the commit window (tau)
- * and bounded lookahead (H) that those pages never touch.
+ * /dashboard use. This page actually exercises the bounded lookahead (H)
+ * those pages never touch. No commit window: every van is replanned on
+ * every forecast tick, so a rerouted path is followed immediately rather
+ * than waiting out a timer.
  *
  * Genuinely stateful: "Advance Tick" / "Simulate Arrival" / "Override"
  * mutate ONE global server-side session (session.ts) via Server Actions,
  * not URL params -- there is no "go back to a previous tick" here, since
- * the controller's state (commit windows, evacuated cells, van
- * positions) only ever moves forward, same as a real live system would.
+ * the controller's state (evacuated cells, van positions) only ever
+ * moves forward, same as a real live system would.
  *
  * Known simplification, stated plainly rather than hidden: a van's
  * currentNodeId never actually changes after simulateArrival() -- the
@@ -42,7 +44,6 @@ export default async function RollingHorizonPage({
   const nodesById = new Map(cells.map((n) => [n.id, n]));
   const lastTick = controller.getLastTick();
   const vans = controller.getAllVans();
-  const nowMinutesDisplay = Math.max(0, currentTick) * TICK_STEP_MINUTES;
 
   if (currentTick < 0 || !lastTick) {
     return (
@@ -50,8 +51,8 @@ export default async function RollingHorizonPage({
         <h1 className="text-2xl font-bold tracking-tight">Rolling Horizon -- live session</h1>
         <p className="mt-3 text-sm text-muted-foreground">
           Nothing has run yet. Starting registers {vans.length} vans across the region and runs the real
-          RollingHorizonController for the first time -- forecast tick 0, bounded 3-hour lookahead (H), 30-minute
-          commit window (tau).
+          RollingHorizonController for the first time -- forecast tick 0, bounded 3-hour lookahead (H). Every tick
+          replans every van immediately, no commit window.
         </p>
         <form action={advanceTick} className="mt-5">
           <button type="submit" className="rounded border px-4 py-2 hover:bg-accent">
@@ -78,8 +79,9 @@ export default async function RollingHorizonPage({
     .sort((a, b) => tierSeverity[b.state.tier] - tierSeverity[a.state.tier] || b.node.demand - a.node.demand);
 
   // Why an unserved region isn't being served: either no van is assigned
-  // to its nearest shelter at all, or that shelter's van(s) exist but are
-  // all still committed to another leg right now.
+  // to its nearest shelter at all, or it's simply not reachable within
+  // that van's remaining budget/capacity right now (no commit window to
+  // blame -- every van is replanned fresh on every tick).
   const cellIdToShelterId = new Map<string, string>();
   for (const cluster of clusters) for (const n of cluster.graph.nodes) cellIdToShelterId.set(n.id, cluster.shelterId);
   const cellIdToVanId = new Map<string, number>();
@@ -90,10 +92,7 @@ export default async function RollingHorizonPage({
     const shelterId = cellIdToShelterId.get(cellId);
     const shelterVans = vans.filter((v) => v.currentNodeId === shelterId);
     if (shelterVans.length === 0) return "No van assigned to its nearest shelter";
-    const allBusy = shelterVans.every((v) => v.committedUntilMinutes - nowMinutesDisplay > 0);
-    return allBusy
-      ? "Nearest shelter's van(s) still committed elsewhere"
-      : "Not currently reachable (time budget or capacity)";
+    return "Not currently reachable (time budget or capacity)";
   };
 
   const vanMarkers = vans.map((v) => {
@@ -202,11 +201,10 @@ export default async function RollingHorizonPage({
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           {vans.length} vans registered region-wide (not just near the storm -- Phase 4&apos;s assignVansToClusters
-          picks whoever&apos;s actually closest each replan). Each tick = {TICK_STEP_MINUTES} simulated minutes --
-          deliberately smaller than the 30-minute commit window (tau), so a van committed this tick is often still
-          committed next tick too: that&apos;s tau actually blocking a replan, not a fixed 8h jump that would always
-          clear it. Real-world forecast cadence (p) stays {FORECAST_INTERVAL_SECONDS / 3600}h, shown by the
-          countdown above -- the tick step is this page&apos;s own simulated clock, not the same thing.
+          picks whoever&apos;s actually closest each replan). Each tick = {TICK_STEP_MINUTES} simulated minutes, and
+          every van is replanned on every tick -- no commit window, so a rerouted path is followed immediately.
+          Real-world forecast cadence (p) stays {FORECAST_INTERVAL_SECONDS / 3600}h, shown by the countdown above --
+          the tick step is this page&apos;s own simulated clock, not the same thing.
         </p>
         <div className="mt-2 max-h-16 overflow-y-auto rounded border bg-muted/30 p-2 text-xs text-muted-foreground">
           {log.length === 0 ? "No events yet." : log.map((entry, i) => <p key={i}>{entry}</p>)}
@@ -262,7 +260,6 @@ export default async function RollingHorizonPage({
             )}
             <ul className="max-h-72 space-y-1.5 overflow-y-auto">
               {vans.map((v) => {
-                const freeInMinutes = v.committedUntilMinutes - nowMinutesDisplay;
                 const stops = routeStopNames(v.vanId);
                 return (
                   <li key={v.vanId} className="rounded border border-border/40 p-1.5 text-xs">
@@ -271,20 +268,9 @@ export default async function RollingHorizonPage({
                         <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: VAN_COLORS[v.vanId % VAN_COLORS.length] }} />
                         Van {v.vanId + 1}
                       </span>
-                      <span className="flex items-center gap-2">
-                        <span
-                          className={freeInMinutes > 0 ? "text-amber-400" : "text-emerald-400"}
-                          title={`committedUntilMinutes=${Math.round(v.committedUntilMinutes)}, now=${Math.round(nowMinutesDisplay)}`}
-                        >
-                          {freeInMinutes > 0 ? `committed ${Math.round(freeInMinutes)}m` : "free"}
-                        </span>
-                        <Link
-                          href={selectUrl(selectedVanId === v.vanId ? undefined : v.vanId)}
-                          className="text-sky-400 underline"
-                        >
-                          {selectedVanId === v.vanId ? "cancel" : "select"}
-                        </Link>
-                      </span>
+                      <Link href={selectUrl(selectedVanId === v.vanId ? undefined : v.vanId)} className="text-sky-400 underline">
+                        {selectedVanId === v.vanId ? "cancel" : "select"}
+                      </Link>
                     </div>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       {stops.length === 0 ? (
