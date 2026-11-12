@@ -1,5 +1,5 @@
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
-import { session, VAN_COLORS, VAN_COUNT } from "./session";
+import { session, VAN_COLORS, VAN_COUNT, FORECAST_INTERVAL_SECONDS, STORM_HOURS_PER_FORECAST, LOOKAHEAD_HOURS, VAN_SHIFT_HOURS, stormMinutesElapsed, screenNextUpdateIso } from "./session";
 import { ControlRoomView, type ControlRoomNode, type ControlRoomVan, type ControlRoomZone } from "./control-room-view";
 
 const plexMono = IBM_Plex_Mono({ weight: "500", subsets: ["latin"] });
@@ -93,7 +93,8 @@ export default function ControlRoomPage() {
         centerY: lastTick.zone.centerY,
         rings: lastTick.zone.rings,
         concentration: lastTick.zone.concentration,
-        nextUpdateIso: lastTick.zone.nextUpdateIso,
+        // Screen countdown (2 min), not the 6 h storm cadence the engine uses.
+        nextUpdateIso: screenNextUpdateIso(),
       }
     : null;
 
@@ -115,6 +116,13 @@ export default function ControlRoomPage() {
       zone={zone}
       bounds={bounds}
       tick={currentTick}
+      timing={{
+        screenSecondsPerForecast: FORECAST_INTERVAL_SECONDS,
+        stormHoursPerForecast: STORM_HOURS_PER_FORECAST,
+        lookaheadHours: LOOKAHEAD_HOURS,
+        shiftHours: VAN_SHIFT_HOURS,
+        stormHoursElapsed: stormMinutesElapsed() / 60,
+      }}
       solverTier={solverTier}
       log={log}
       activeStormCount={1}

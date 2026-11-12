@@ -51,17 +51,31 @@ export const SOLVER_TIER_THRESHOLDS: Record<SolverTier, ClusterRoutingThresholds
 
 const SEED = 2026;
 const SESSION_STARTED_AT = new Date();
-/** Real-world forecast cadence shown by the countdown -- short (2min) on
- * purpose for a live demo page. Still clickable at any time regardless of
- * how much is left (see actions.ts). */
+/** Two clocks, deliberately separate (the demo runs at fast-forward):
+ *  - SCREEN time: the countdown on the page. Short (2 min) so a live demo
+ *    keeps moving; still clickable at any time to pull the next forecast
+ *    early (see actions.ts).
+ *  - STORM time: what one forecast update represents in the simulated
+ *    world. Every deadline, the planning horizon and each van's shift are
+ *    measured in storm time, so they stay realistic regardless of how fast
+ *    the demo plays. 2 min on screen = one 6 h forecast cycle. */
 export const FORECAST_INTERVAL_SECONDS = 120;
+export const STORM_HOURS_PER_FORECAST = 6;
+const STORM_SECONDS_PER_FORECAST = STORM_HOURS_PER_FORECAST * 3600;
 export const SHELTER_COUNT = 2;
 export const VAN_COUNT = 4;
 const VANS_PER_SHELTER = VAN_COUNT / SHELTER_COUNT;
-/** Fixed per-tick planning budget -- same convention RollingHorizonController
- * itself uses (remainingMinutes is never decremented tick to tick there
- * either); each tick is an independent fresh plan, not a depleting shift. */
-const VAN_BUDGET_MINUTES = 600;
+/** H, the rolling-horizon lookahead: each replan only plans the next 8 h
+ * of storm time -- longer than the 6 h gap between forecasts (so a van
+ * never runs out of plan before the next replan), far shorter than its
+ * whole shift. Re-planned with a fresh 8 h window on every forecast. */
+export const LOOKAHEAD_HOURS = 8;
+const LOOKAHEAD_MINUTES = LOOKAHEAD_HOURS * 60;
+/** A van's total shift in storm time. Unlike the old fixed per-tick
+ * budget, this depletes: each forecast cycle consumes 6 h of it, and a
+ * replan may only use min(what's left, H). */
+export const VAN_SHIFT_HOURS = 48;
+const VAN_SHIFT_MINUTES = VAN_SHIFT_HOURS * 60;
 /** Per-trip carrying capacity (Phase 7's vehicleCapacity). Without this,
  * a van's greedy/neural solve has no reason to ever stop picking up MORE
  * villages as long as time allows -- with a 10h budget on a ~30km-wide
@@ -89,6 +103,9 @@ export interface ControlRoomSession {
   forecastEngine: CycloneForecastEngine;
   lastTick: ForecastTickResult | null;
   currentTick: number;
+  /** Real (screen) time the last forecast was pulled -- the screen
+   * countdown runs FORECAST_INTERVAL_SECONDS from here. */
+  lastForecastAt: Date;
   vanRoutes: Map<number, Route>;
   /** Each van's position AT THE START of its currently-displayed route --
    * i.e. wherever it was when the last tick was pulled. The client is the
@@ -128,7 +145,7 @@ function createSession(seed: number = SEED, startedAt: Date = SESSION_STARTED_AT
   }).getNodes();
   const shelters = cells.filter((n) => n.role === "shelter");
   const origins = cells.filter((n) => n.role === "origin");
-  const forecastEngine = new CycloneForecastEngine(cells, seed, startedAt, FORECAST_INTERVAL_SECONDS);
+  const forecastEngine = new CycloneForecastEngine(cells, seed, startedAt, STORM_SECONDS_PER_FORECAST);
 
   const vanHomeShelterId = new Map<number, string>();
   const vanStartPositions = new Map<number, VanPosition>();
@@ -148,6 +165,7 @@ function createSession(seed: number = SEED, startedAt: Date = SESSION_STARTED_AT
     forecastEngine,
     lastTick: null,
     currentTick: -1,
+    lastForecastAt: startedAt,
     vanRoutes: new Map(),
     vanStartPositions,
     vanDropoffShelterId,
@@ -158,7 +176,11 @@ function createSession(seed: number = SEED, startedAt: Date = SESSION_STARTED_AT
 }
 
 const globalForControlRoom = globalThis as unknown as { controlRoomSession?: ControlRoomSession };
-export const session = globalForControlRoom.controlRoomSession ?? createSession();
+// A session cached across dev hot-reloads from before the storm-time /
+// rolling-horizon change has no lastForecastAt and a 2-minute forecast
+// engine -- discard it rather than mixing old and new clocks.
+const cachedSession = globalForControlRoom.controlRoomSession;
+export const session = cachedSession && cachedSession.lastForecastAt ? cachedSession : createSession();
 if (process.env.NODE_ENV !== "production") globalForControlRoom.controlRoomSession = session;
 
 export function logEvent(message: string): void {
@@ -220,11 +242,43 @@ export async function advanceForecast(vanPositions: VanPosition[]): Promise<void
   const nextTick = session.currentTick + 1;
   session.lastTick = session.forecastEngine.advanceTick(nextTick);
   session.currentTick = nextTick;
+  session.lastForecastAt = new Date();
+
+  // Storm time at this replan, and what's left of every van's shift.
+  const nowMinutes = stormMinutesElapsed();
+  const shiftLeftMinutes = Math.max(0, VAN_SHIFT_MINUTES - nowMinutes);
+  const planningMinutes = Math.min(shiftLeftMinutes, LOOKAHEAD_MINUTES);
 
   for (const p of vanPositions) session.vanStartPositions.set(p.vanId, p);
 
   const { priorities, riskScores } = priorityFromForecastTick(session.cells, session.lastTick);
   const thresholds = SOLVER_TIER_THRESHOLDS[session.solverTier];
+  // Per-village forecast-driven evacuation deadline (narrower than the
+  // static always-open openingHours every node has) -- "this village
+  // must be reached within N hours of first going at-risk," same
+  // mechanism /rolling-horizon uses. Without this, a village stayed
+  // "visitable" forever regardless of urgency; urgency only raised its
+  // priority SCORE, never made it genuinely infeasible once too late.
+  // The engine reports windows in storm-minutes-from-session-start, but
+  // every solver's clock starts at 0 = "now" (this replan), so shift each
+  // window back by nowMinutes -- otherwise a deadline that already passed
+  // would look hours away on every forecast after the first (same fix
+  // RollingHorizonController.replan applies).
+  const deadlineWindows = new Map(
+    Array.from(session.lastTick.cellStates.entries(), ([cellId, state]) => [
+      cellId,
+      state.window && {
+        effectiveOpenMinutes: Math.max(state.window.effectiveOpenMinutes - nowMinutes, 0),
+        closeMinutes: state.window.closeMinutes - nowMinutes,
+      },
+    ] as const),
+  );
+
+  if (planningMinutes <= 0) {
+    session.vanRoutes.clear();
+    logEvent(`Forecast ${nextTick}: every van's ${VAN_SHIFT_HOURS} h shift is used up -- no further routes.`);
+    return;
+  }
 
   const positionNodes = Array.from(session.vanStartPositions.values(), vanPositionNode);
   const graph = buildGraph([...session.shelters, ...session.origins, ...positionNodes]);
@@ -246,7 +300,9 @@ export async function advanceForecast(vanPositions: VanPosition[]): Promise<void
   const allTeams: ClusterTeam[] = Array.from(session.vanStartPositions.keys(), (vanId) => ({
     teamId: vanId,
     currentNodeId: `van_pos_${vanId}`,
-    remainingMinutes: VAN_BUDGET_MINUTES,
+    // Rolling horizon: plan only the next H of storm time (or less, once
+    // the shift is nearly over); the next forecast replans a fresh window.
+    remainingMinutes: planningMinutes,
     shiftedGameStartMinutesOfDay: 9 * 60,
     vehicleCapacity: VAN_CAPACITY,
   }));
@@ -273,6 +329,7 @@ export async function advanceForecast(vanPositions: VanPosition[]): Promise<void
       shelterCapacity: shelter.capacity,
       alreadyVisited: visited,
       thresholds,
+      deadlineWindows,
     });
 
     const route = result.routesByTeam.get(team.teamId);
@@ -313,8 +370,19 @@ export async function advanceForecast(vanPositions: VanPosition[]): Promise<void
   }
 
   logEvent(
-    `Forecast ${nextTick}: storm now in the ${session.lastTick.zone.concentration.toLowerCase()} -- ${totalRouted} van route(s) updated (${methods.join(", ")}).`,
+    `Forecast ${nextTick} (storm +${nowMinutes / 60} h): storm now in the ${session.lastTick.zone.concentration.toLowerCase()} -- ${totalRouted} van route(s) replanned for the next ${planningMinutes / 60} h (${methods.join(", ")}).`,
   );
+}
+
+/** Storm time elapsed at the current forecast, in minutes. Forecast 0 is
+ * storm time 0; each later forecast is another 6 h. */
+export function stormMinutesElapsed(): number {
+  return Math.max(0, session.currentTick) * STORM_HOURS_PER_FORECAST * 60;
+}
+
+/** When the on-screen countdown reaches zero -- screen time, not storm time. */
+export function screenNextUpdateIso(): string {
+  return new Date(session.lastForecastAt.getTime() + FORECAST_INTERVAL_SECONDS * 1000).toISOString();
 }
 
 export function setSolverTierSync(tier: SolverTier): void {

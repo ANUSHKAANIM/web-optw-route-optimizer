@@ -95,6 +95,14 @@ interface Bounds {
   height: number;
 }
 
+export interface ControlRoomTiming {
+  screenSecondsPerForecast: number;
+  stormHoursPerForecast: number;
+  lookaheadHours: number;
+  shiftHours: number;
+  stormHoursElapsed: number;
+}
+
 interface Props {
   shelters: { id: string; name: string; x: number; y: number }[];
   nodes: ControlRoomNode[];
@@ -102,6 +110,8 @@ interface Props {
   zone: ControlRoomZone | null;
   bounds: Bounds;
   tick: number;
+  /** Two clocks: screen seconds per forecast vs storm hours it stands for. */
+  timing: ControlRoomTiming;
   solverTier: SolverTier;
   log: string[];
   activeStormCount: number;
@@ -180,7 +190,7 @@ function pointOnPath(path: VanPath, s: number): [number, number] {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 }
 
-export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, solverTier, log, activeStormCount, monoFont, sansFont }: Props) {
+export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, timing, solverTier, log, activeStormCount, monoFont, sansFont }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [selectedVanId, setSelectedVanId] = useState(vans[0]?.id ?? 0);
   const [hover, setHover] = useState<{ x: number; y: number; node: ControlRoomNode } | null>(null);
@@ -593,7 +603,7 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, sol
           >
             <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 20 }}>
               <div>
-                <div style={{ fontSize: 12, color: "#9aa6b6" }}>{pending ? "Pulling next forecast…" : "Next forecast in (click to skip)"}</div>
+                <div style={{ fontSize: 12, color: "#9aa6b6" }}>{pending ? "Pulling next forecast…" : `Next forecast in (click to skip) · 1 forecast = ${timing.stormHoursPerForecast} h storm time`}</div>
                 <div style={{ fontFamily: `${monoFont}, monospace`, fontSize: 34, fontWeight: 500, letterSpacing: "0.02em", lineHeight: 1.1, marginTop: 2 }}>
                   {pad(h)}:{pad(m)}:{pad(s)}
                 </div>
@@ -601,10 +611,12 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, sol
               <div style={{ textAlign: "right", fontSize: 12, color: "#9aa6b6", lineHeight: 1.5 }}>
                 <div>Tick <span style={{ color: "#e6ebf2", fontFamily: `${monoFont}, monospace` }}>{Math.max(0, tick)}</span></div>
                 <div>{solverTier === "real" ? "Neural solver" : "Greedy solver"}</div>
+                <div>Storm time <span style={{ color: "#e6ebf2", fontFamily: `${monoFont}, monospace` }}>+{timing.stormHoursElapsed} h</span> / {timing.shiftHours} h</div>
+                <div>Planning window <span style={{ color: "#e6ebf2", fontFamily: `${monoFont}, monospace` }}>{timing.lookaheadHours} h</span></div>
               </div>
             </div>
             <div style={{ height: 4, borderRadius: 4, background: "#232b36", overflow: "hidden" }}>
-              <div style={{ height: 4, background: "#5ec8ff", width: `${Math.max(0, Math.min(100, 100 - (remainingMs / (120 * 1000)) * 100))}%` }} />
+              <div style={{ height: 4, background: "#5ec8ff", width: `${Math.max(0, Math.min(100, 100 - (remainingMs / (timing.screenSecondsPerForecast * 1000)) * 100))}%` }} />
             </div>
             {flash && <div style={{ fontSize: 12, color: "#5ec8ff", fontWeight: 500 }}>Forecast just updated -- routes recalculated</div>}
           </button>
