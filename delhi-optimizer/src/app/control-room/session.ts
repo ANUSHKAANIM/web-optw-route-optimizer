@@ -12,7 +12,7 @@ import { positionAtMinute, type Waypoint } from "./van-timeline";
 /**
  * A small, fast demo scenario wired through the SAME real solver stack
  * /rolling-horizon uses (cluster-router's greedy/neural/exact dispatch,
- * the real forecast engine) -- just sized down (36 villages, 2 shelters, 4
+ * the real forecast engine) -- just sized down (20 villages, 2 shelters, 4
  * vans) so every tick is fast enough to click through live.
  *
  * Deliberately NOT built on RollingHorizonController: that controller
@@ -33,7 +33,7 @@ import { positionAtMinute, type Waypoint } from "./van-timeline";
  *
  * Two shelters, not one: each van has a fixed HOME shelter (it must
  * return there -- the depot in its own routeCluster() call), but every
- * van can still be sent to ANY of the 36 villages regardless of which
+ * van can still be sent to ANY of the 20 villages regardless of which
  * shelter is geographically closer -- there's no per-shelter catchment
  * here, just a shared candidate pool with a cross-shelter exclusion set
  * (so the two shelters' vans never both claim the same village in one
@@ -166,11 +166,11 @@ export interface VillageStatus {
 
 function createSession(seed: number = SEED, startedAt: Date = SESSION_STARTED_AT): ControlRoomSession {
   const cells = new SyntheticCellProvider({
-    // 36 villages + 2 shelters, spread over a slightly bigger map: half the
+    // 20 villages + 2 shelters, spread over a slightly bigger map: half the
     // villages around the two towns, half scattered across the whole map,
-    // and none closer than 3.5 km to another node -- so the demo lasts
-    // longer without dots and route lines piling up on each other.
-    cellCount: 38,
+    // and none closer than 3.5 km to another node -- so dots and route
+    // lines don't pile up on each other.
+    cellCount: 22,
     clusterCount: SHELTER_COUNT,
     planeHalfSizeKm: 20,
     isolatedFraction: 0.5,
@@ -220,7 +220,7 @@ const globalForControlRoom = globalThis as unknown as { controlRoomSession?: Con
 // rolling-horizon change has no lastForecastAt and a 2-minute forecast
 // engine -- discard it rather than mixing old and new clocks.
 const cachedSession = globalForControlRoom.controlRoomSession;
-export const session = cachedSession && cachedSession.villageStatus && cachedSession.origins.length === 36 ? cachedSession : createSession();
+export const session = cachedSession && cachedSession.villageStatus && cachedSession.origins.length === 20 ? cachedSession : createSession();
 if (process.env.NODE_ENV !== "production") globalForControlRoom.controlRoomSession = session;
 
 export function logEvent(message: string): void {
