@@ -7,6 +7,7 @@ import { CycloneForecastEngine, type ForecastTickResult } from "@/forecast/cyclo
 import { priorityFromForecastTick } from "@/forecast/priority-from-forecast";
 import type { GraphNode } from "@/types/graph";
 import type { Route } from "@/types/game";
+import { positionAtMinute, type Waypoint } from "./van-timeline";
 
 /**
  * A small, fast demo scenario wired through the SAME real solver stack
@@ -130,6 +131,17 @@ export interface ControlRoomSession {
    * candidate pool, so a masked village never gets offered to another
    * van (or re-offered to the same one). */
   evacuatedCellIds: Set<string>;
+  /** Each van's current route as a storm-time timeline (start -> stops ->
+   * drop-off), see van-timeline.ts. Drives both the 6 h "where is it at
+   * the next forecast" step here and the client's animation. */
+  vanWaypoints: Map<number, Waypoint[]>;
+  /** People currently on board each van -- picked up but not yet dropped
+   * at a shelter. Carried across replans: a van replanned mid-route keeps
+   * its passengers and has only VAN_CAPACITY minus this left. */
+  vanLoad: Map<number, number>;
+  /** People actually delivered to each shelter over the WHOLE session --
+   * a shelter fills up and stays full, it doesn't reset every forecast. */
+  shelterServed: Map<string, number>;
   solverTier: SolverTier;
   log: string[];
 }
@@ -170,6 +182,9 @@ function createSession(seed: number = SEED, startedAt: Date = SESSION_STARTED_AT
     vanStartPositions,
     vanDropoffShelterId,
     evacuatedCellIds: new Set(),
+    vanWaypoints: new Map(),
+    vanLoad: new Map(Array.from({ length: VAN_COUNT }, (_, i) => [i, 0])),
+    shelterServed: new Map(shelters.map((s) => [s.id, 0])),
     solverTier: "real",
     log: [],
   };
@@ -180,7 +195,7 @@ const globalForControlRoom = globalThis as unknown as { controlRoomSession?: Con
 // rolling-horizon change has no lastForecastAt and a 2-minute forecast
 // engine -- discard it rather than mixing old and new clocks.
 const cachedSession = globalForControlRoom.controlRoomSession;
-export const session = cachedSession && cachedSession.lastForecastAt ? cachedSession : createSession();
+export const session = cachedSession && cachedSession.shelterServed ? cachedSession : createSession();
 if (process.env.NODE_ENV !== "production") globalForControlRoom.controlRoomSession = session;
 
 export function logEvent(message: string): void {
@@ -213,32 +228,29 @@ function vanPositionNode(pos: VanPosition): GraphNode {
   };
 }
 
-function nearestShelter(point: { x: number; y: number }, shelters: GraphNode[]): GraphNode {
-  let best = shelters[0];
-  let bestDist = planeDistanceKm([point.x, point.y], [best.x, best.y]);
-  for (const s of shelters.slice(1)) {
-    const d = planeDistanceKm([point.x, point.y], [s.x, s.y]);
-    if (d < bestDist) {
-      bestDist = d;
-      best = s;
-    }
-  }
-  return best;
-}
 
-/** Pulls the next forecast and replans every van, each starting from its
- * own current (x, y) rather than its shelter. FLEET-WIDE processing
- * order: resolveTeamProcessingOrder runs ONCE across all 4 vans from
- * BOTH shelters together, so the van genuinely closest to the highest-
- * priority village gets first claim on it regardless of which shelter it
- * calls home -- not "whichever shelter is processed first always wins",
- * which was a real, confirmed bug (a van 21km away claimed the most
- * urgent village while a van 5.7km away, from the other shelter, sat
- * idle). Each van is then routed individually, in that fleet order, via
- * its OWN home shelter as depot -- routeCluster can't batch vans with
- * different depots into one joint call, so this is deliberately one call
- * per van rather than one call per shelter. */
-export async function advanceForecast(vanPositions: VanPosition[]): Promise<void> {
+/** Pulls the next forecast and replans every van.
+ *
+ * Step 1 -- play out the last 6 h of storm time on the PREVIOUS routes,
+ * server-side from each route's timeline (not from wherever the
+ * animation happened to be when Skip was clicked): every stop reached by
+ * minute 360 is evacuated and its people go on board; a van whose route
+ * ends by then drops its passengers at its drop-off shelter (a running
+ * total that never resets) and waits there. A van still mid-route is
+ * replanned from its exact 6 h position, passengers still on board.
+ *
+ * Step 2 -- replan. FLEET-WIDE processing order: resolveTeamProcessingOrder
+ * runs ONCE across all 4 vans from BOTH shelters together, so the van
+ * genuinely closest to the highest-priority village gets first claim on
+ * it regardless of which shelter it calls home. Each van is then routed
+ * individually via its OWN home shelter as depot (routeCluster can't
+ * batch vans with different depots into one call), with only its free
+ * seats (VAN_CAPACITY minus passengers on board) and only the shelter
+ * space not already used or reserved. */
+export async function advanceForecast(): Promise<void> {
+  const stepMinutes = STORM_HOURS_PER_FORECAST * 60;
+  if (session.currentTick >= 0) playOutPreviousRoutes(stepMinutes);
+
   const nextTick = session.currentTick + 1;
   session.lastTick = session.forecastEngine.advanceTick(nextTick);
   session.currentTick = nextTick;
@@ -249,21 +261,12 @@ export async function advanceForecast(vanPositions: VanPosition[]): Promise<void
   const shiftLeftMinutes = Math.max(0, VAN_SHIFT_MINUTES - nowMinutes);
   const planningMinutes = Math.min(shiftLeftMinutes, LOOKAHEAD_MINUTES);
 
-  for (const p of vanPositions) session.vanStartPositions.set(p.vanId, p);
-
   const { priorities, riskScores } = priorityFromForecastTick(session.cells, session.lastTick);
   const thresholds = SOLVER_TIER_THRESHOLDS[session.solverTier];
-  // Per-village forecast-driven evacuation deadline (narrower than the
-  // static always-open openingHours every node has) -- "this village
-  // must be reached within N hours of first going at-risk," same
-  // mechanism /rolling-horizon uses. Without this, a village stayed
-  // "visitable" forever regardless of urgency; urgency only raised its
-  // priority SCORE, never made it genuinely infeasible once too late.
-  // The engine reports windows in storm-minutes-from-session-start, but
-  // every solver's clock starts at 0 = "now" (this replan), so shift each
-  // window back by nowMinutes -- otherwise a deadline that already passed
-  // would look hours away on every forecast after the first (same fix
-  // RollingHorizonController.replan applies).
+  // Per-village forecast-driven evacuation deadline. The engine reports
+  // windows in storm-minutes-from-session-start, but every solver's clock
+  // starts at 0 = "now" (this replan), so shift each window back by
+  // nowMinutes -- same fix RollingHorizonController.replan applies.
   const deadlineWindows = new Map(
     Array.from(session.lastTick.cellStates.entries(), ([cellId, state]) => [
       cellId,
@@ -274,104 +277,181 @@ export async function advanceForecast(vanPositions: VanPosition[]): Promise<void
     ] as const),
   );
 
-  if (planningMinutes <= 0) {
-    session.vanRoutes.clear();
-    logEvent(`Forecast ${nextTick}: every van's ${VAN_SHIFT_HOURS} h shift is used up -- no further routes.`);
-    return;
-  }
-
   const positionNodes = Array.from(session.vanStartPositions.values(), vanPositionNode);
   const graph = buildGraph([...session.shelters, ...session.origins, ...positionNodes]);
 
-  // Start from what's already been evacuated, PLUS every shelter and
-  // every van's synthetic position node -- none of those are real
-  // villages, but computeNodeStates/computeBaselineRoute don't filter
-  // candidates by role, only by priority and feasibility (see
-  // optimization/feasibility.ts). A shelter or another van's position
-  // marker has priority 0, same as "nothing better to do here", which is
-  // NOT the same as "ineligible" -- without this explicit exclusion a
-  // van will happily "visit" another van's position or a shelter as a
-  // zero-value stop once real villages run low, which is a real bug
-  // (confirmed live: a van's route included "shelter_1" and another
-  // van's position node as stops), not just a cosmetic nit.
+  // Shelters and van-position markers are never candidates (priority 0 is
+  // NOT the same as ineligible -- without this a van would "visit" a
+  // shelter or another van's marker as a zero-value stop).
   const nonCandidateIds = new Set<string>([...session.shelters.map((s) => s.id), ...positionNodes.map((p) => p.id)]);
   const visited = new Set<string>([...session.evacuatedCellIds, ...nonCandidateIds]);
 
-  const allTeams: ClusterTeam[] = Array.from(session.vanStartPositions.keys(), (vanId) => ({
-    teamId: vanId,
-    currentNodeId: `van_pos_${vanId}`,
-    // Rolling horizon: plan only the next H of storm time (or less, once
-    // the shift is nearly over); the next forecast replans a fresh window.
-    remainingMinutes: planningMinutes,
-    shiftedGameStartMinutesOfDay: 9 * 60,
-    vehicleCapacity: VAN_CAPACITY,
-  }));
-  // resolveTeamProcessingOrder never reads cluster.shelterId, only
-  // cluster.graph -- the shelter named here is a don't-care, just needs
-  // SOME valid GraphCluster shape to pass the combined graph through.
-  const fleetOrder = resolveTeamProcessingOrder({ shelterId: session.shelters[0].id, graph }, allTeams, priorities);
-
-  const demandServedByShelter = new Map<string, number>(session.shelters.map((s) => [s.id, 0]));
-  let totalRouted = 0;
-  const methods: string[] = [];
-
-  for (const team of fleetOrder) {
-    const homeShelterId = session.vanHomeShelterId.get(team.teamId)!;
-    const shelter = session.shelters.find((s) => s.id === homeShelterId)!;
-
-    const result = await routeCluster({
-      cluster: { shelterId: homeShelterId, graph },
-      teams: [team],
-      weekday: "monday",
-      priorities,
-      riskScores,
-      demandServedSoFar: demandServedByShelter.get(homeShelterId) ?? 0,
-      shelterCapacity: shelter.capacity,
-      alreadyVisited: visited,
-      thresholds,
-      deadlineWindows,
-    });
-
-    const route = result.routesByTeam.get(team.teamId);
-    if (route) {
-      // The route was computed assuming it returns to the home shelter
-      // (that's what feasibility/capacity were checked against) -- but
-      // once the stop sequence is fixed, drop off wherever is actually
-      // nearest to the last stop instead. A strictly closer shelter is
-      // always a strictly SHORTER return leg, so this can only improve
-      // the route, never break the feasibility already confirmed.
-      let dropoffShelterId = homeShelterId;
-      if (route.stops.length > 0) {
-        const lastStop = graph.nodesById.get(route.stops[route.stops.length - 1].nodeId)!;
-        const dropoff = nearestShelter(lastStop, session.shelters);
-        if (dropoff.id !== homeShelterId) {
-          const oldReturnKm = graph.distanceKm.get(lastStop.id)?.get(homeShelterId) ?? 0;
-          const oldReturnMin = graph.travelTimeMinutes.get(lastStop.id)?.get(homeShelterId) ?? 0;
-          const newReturnKm = graph.distanceKm.get(lastStop.id)?.get(dropoff.id) ?? 0;
-          const newReturnMin = graph.travelTimeMinutes.get(lastStop.id)?.get(dropoff.id) ?? 0;
-          route.totalDistanceKm += newReturnKm - oldReturnKm;
-          route.totalTravelMinutes += newReturnMin - oldReturnMin;
-          dropoffShelterId = dropoff.id;
-        }
-      }
-      session.vanRoutes.set(team.teamId, route);
-      session.vanDropoffShelterId.set(team.teamId, dropoffShelterId);
-      for (const stop of route.stops) visited.add(stop.nodeId);
-      // Credited to wherever the van ACTUALLY drops off, so next tick's
-      // capacity bookkeeping reflects reality -- this tick's own
-      // feasibility check already ran against the home shelter's
-      // capacity, a documented approximation (the solver doesn't know
-      // the eventual dropoff point until after it's already chosen the
-      // stop sequence).
-      demandServedByShelter.set(dropoffShelterId, (demandServedByShelter.get(dropoffShelterId) ?? 0) + route.totalDemandServed);
-      totalRouted++;
-    }
-    methods.push(result.method);
+  // Shelter space already used (delivered, persistent) PLUS the space
+  // every loaded van will need when it unloads -- reserved at its home
+  // shelter up front so this replan can't give that space away.
+  const shelterCommitted = new Map<string, number>(session.shelters.map((s) => [s.id, session.shelterServed.get(s.id) ?? 0]));
+  for (const [vanId, load] of session.vanLoad) {
+    const home = session.vanHomeShelterId.get(vanId)!;
+    shelterCommitted.set(home, (shelterCommitted.get(home) ?? 0) + load);
   }
 
+  session.vanRoutes.clear();
+  session.vanWaypoints.clear();
+
+  const methods: string[] = [];
+  let totalRouted = 0;
+
+  if (planningMinutes > 0) {
+    const allTeams: ClusterTeam[] = Array.from(session.vanStartPositions.keys(), (vanId) => ({
+      teamId: vanId,
+      currentNodeId: `van_pos_${vanId}`,
+      // Rolling horizon: plan only the next H of storm time (or less, once
+      // the shift is nearly over); the next forecast replans a fresh window.
+      remainingMinutes: planningMinutes,
+      shiftedGameStartMinutesOfDay: 9 * 60,
+      // Only the seats still free -- passengers picked up earlier stay on board.
+      vehicleCapacity: Math.max(0, VAN_CAPACITY - (session.vanLoad.get(vanId) ?? 0)),
+    }));
+    // resolveTeamProcessingOrder only reads cluster.graph -- the shelter
+    // named here is a don't-care.
+    const fleetOrder = resolveTeamProcessingOrder({ shelterId: session.shelters[0].id, graph }, allTeams, priorities);
+
+    for (const team of fleetOrder) {
+      const homeShelterId = session.vanHomeShelterId.get(team.teamId)!;
+      const shelter = session.shelters.find((s) => s.id === homeShelterId)!;
+      const load = session.vanLoad.get(team.teamId) ?? 0;
+
+      const result = await routeCluster({
+        cluster: { shelterId: homeShelterId, graph },
+        teams: [team],
+        weekday: "monday",
+        priorities,
+        riskScores,
+        demandServedSoFar: shelterCommitted.get(homeShelterId) ?? 0,
+        shelterCapacity: shelter.capacity,
+        alreadyVisited: visited,
+        thresholds,
+        deadlineWindows,
+      });
+      methods.push(result.method);
+
+      const route = result.routesByTeam.get(team.teamId);
+      if (route && route.stops.length > 0) {
+        // Feasibility (time, capacity) was checked against the home
+        // shelter. Once the stops are fixed, unload at a strictly closer
+        // shelter instead -- but only one with room for everyone on
+        // board, so no shelter is ever overfilled.
+        const lastStop = graph.nodesById.get(route.stops[route.stops.length - 1].nodeId)!;
+        const dropoff = nearestShelterWithRoom(lastStop, load + route.totalDemandServed, homeShelterId, shelterCommitted);
+        if (dropoff.id !== homeShelterId) {
+          route.totalDistanceKm +=
+            (graph.distanceKm.get(lastStop.id)?.get(dropoff.id) ?? 0) - (graph.distanceKm.get(lastStop.id)?.get(homeShelterId) ?? 0);
+          route.totalTravelMinutes +=
+            (graph.travelTimeMinutes.get(lastStop.id)?.get(dropoff.id) ?? 0) -
+            (graph.travelTimeMinutes.get(lastStop.id)?.get(homeShelterId) ?? 0);
+          // Move this van's reservation from home to where it really unloads.
+          shelterCommitted.set(homeShelterId, (shelterCommitted.get(homeShelterId) ?? 0) - load);
+          shelterCommitted.set(dropoff.id, (shelterCommitted.get(dropoff.id) ?? 0) + load);
+        }
+        shelterCommitted.set(dropoff.id, (shelterCommitted.get(dropoff.id) ?? 0) + route.totalDemandServed);
+        setVanRoute(team.teamId, route, dropoff, graph);
+        for (const stop of route.stops) visited.add(stop.nodeId);
+        totalRouted++;
+      } else if (load > 0) {
+        // Nothing new worth picking up, but people are on board: drive
+        // straight to the nearest shelter that can take them.
+        const pos = session.vanStartPositions.get(team.teamId)!;
+        const dropoff = nearestShelterWithRoom(pos, load, homeShelterId, shelterCommitted);
+        if (dropoff.id !== homeShelterId) {
+          shelterCommitted.set(homeShelterId, (shelterCommitted.get(homeShelterId) ?? 0) - load);
+          shelterCommitted.set(dropoff.id, (shelterCommitted.get(dropoff.id) ?? 0) + load);
+        }
+        const posId = `van_pos_${team.teamId}`;
+        const returnOnly: Route = {
+          stops: [],
+          totalDistanceKm: graph.distanceKm.get(posId)?.get(dropoff.id) ?? 0,
+          totalTravelMinutes: graph.travelTimeMinutes.get(posId)?.get(dropoff.id) ?? 0,
+          totalReward: 0,
+          totalDemandServed: 0,
+          computeTimeMs: 0,
+        };
+        setVanRoute(team.teamId, returnOnly, dropoff, graph);
+      }
+    }
+  }
+
+  const sheltered = Array.from(session.shelterServed.values()).reduce((a, b) => a + b, 0);
+  const onBoard = Array.from(session.vanLoad.values()).reduce((a, b) => a + b, 0);
   logEvent(
-    `Forecast ${nextTick} (storm +${nowMinutes / 60} h): storm now in the ${session.lastTick.zone.concentration.toLowerCase()} -- ${totalRouted} van route(s) replanned for the next ${planningMinutes / 60} h (${methods.join(", ")}).`,
+    planningMinutes > 0
+      ? `Forecast ${nextTick} (storm +${nowMinutes / 60} h): storm in the ${session.lastTick.zone.concentration.toLowerCase()} -- ${totalRouted} van route(s) replanned for the next ${planningMinutes / 60} h (${methods.join(", ")}). ${sheltered} sheltered, ${onBoard} on board.`
+      : `Forecast ${nextTick}: every van's ${VAN_SHIFT_HOURS} h shift is used up -- ${sheltered} people sheltered in total.`,
   );
+}
+
+/** Advance every van `minutes` of storm time along its current route:
+ * evacuate the stops it reaches, unload at the shelter if it gets there. */
+function playOutPreviousRoutes(minutes: number): void {
+  for (const [vanId, waypoints] of session.vanWaypoints) {
+    const route = session.vanRoutes.get(vanId);
+    if (!route) continue;
+    let load = session.vanLoad.get(vanId) ?? 0;
+    for (const stop of route.stops) {
+      if (stop.arrivalMinutes > minutes) break;
+      if (!session.evacuatedCellIds.has(stop.nodeId)) session.evacuatedCellIds.add(stop.nodeId);
+      load += stop.demandServed;
+    }
+    const end = waypoints[waypoints.length - 1];
+    if (end.arriveMinutes <= minutes) {
+      const dropoffId = session.vanDropoffShelterId.get(vanId)!;
+      session.shelterServed.set(dropoffId, (session.shelterServed.get(dropoffId) ?? 0) + load);
+      load = 0;
+    }
+    session.vanLoad.set(vanId, load);
+    const pos = positionAtMinute(waypoints, minutes);
+    session.vanStartPositions.set(vanId, { vanId, x: pos.x, y: pos.y });
+  }
+}
+
+/** Stores a van's route plus its storm-time timeline (start -> stops -> drop-off). */
+function setVanRoute(vanId: number, route: Route, dropoff: GraphNode, graph: ReturnType<typeof buildGraph>): void {
+  const start = session.vanStartPositions.get(vanId)!;
+  const waypoints: Waypoint[] = [{ x: start.x, y: start.y, arriveMinutes: 0, departMinutes: 0 }];
+  let lastId = `van_pos_${vanId}`;
+  let lastDepart = 0;
+  for (const stop of route.stops) {
+    const node = graph.nodesById.get(stop.nodeId)!;
+    waypoints.push({ x: node.x, y: node.y, arriveMinutes: stop.arrivalMinutes, departMinutes: stop.departureMinutes });
+    lastId = stop.nodeId;
+    lastDepart = stop.departureMinutes;
+  }
+  const arrive = lastDepart + (graph.travelTimeMinutes.get(lastId)?.get(dropoff.id) ?? 0);
+  waypoints.push({ x: dropoff.x, y: dropoff.y, arriveMinutes: arrive, departMinutes: arrive });
+  session.vanRoutes.set(vanId, route);
+  session.vanWaypoints.set(vanId, waypoints);
+  session.vanDropoffShelterId.set(vanId, dropoff.id);
+}
+
+/** Nearest shelter to `point` with room for `people` more, falling back
+ * to the home shelter (where the space was reserved). */
+function nearestShelterWithRoom(
+  point: { x: number; y: number },
+  people: number,
+  homeShelterId: string,
+  committed: ReadonlyMap<string, number>,
+): GraphNode {
+  let best = session.shelters.find((s) => s.id === homeShelterId)!;
+  let bestDist = planeDistanceKm([point.x, point.y], [best.x, best.y]);
+  for (const s of session.shelters) {
+    if (s.id === homeShelterId) continue;
+    const room = s.capacity - (committed.get(s.id) ?? 0);
+    const d = planeDistanceKm([point.x, point.y], [s.x, s.y]);
+    if (room >= people && d < bestDist) {
+      best = s;
+      bestDist = d;
+    }
+  }
+  return best;
 }
 
 /** Storm time elapsed at the current forecast, in minutes. Forecast 0 is

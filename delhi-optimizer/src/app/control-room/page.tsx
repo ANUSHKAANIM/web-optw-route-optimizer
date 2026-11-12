@@ -84,6 +84,8 @@ export default function ControlRoomPage() {
       totalTravelMinutes: route?.totalTravelMinutes ?? 0,
       totalReward: route?.totalReward ?? 0,
       totalDemandServed: route?.totalDemandServed ?? 0,
+      waypoints: session.vanWaypoints.get(i) ?? [],
+      load: session.vanLoad.get(i) ?? 0,
     };
   });
 

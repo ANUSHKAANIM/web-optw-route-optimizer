@@ -6,7 +6,6 @@ import {
   setSolverTierSync,
   markEvacuatedSync,
   resetSessionSync,
-  type VanPosition,
   type SolverTier,
 } from "./session";
 
@@ -19,13 +18,12 @@ function safeRevalidate(): void {
 }
 
 /** The ONE interaction this page has: pull the next forecast now, same as
- * clicking the countdown. `vanPositions` is each van's CURRENT (x, y) --
- * computed client-side from its live animation along its existing route,
- * not the shelter -- so the new route starts from wherever the van
- * visually is right now, not reset back to the depot. See session.ts's
- * header comment for why this can't be done through RollingHorizonController. */
-export async function advanceForecast(vanPositions: VanPosition[]): Promise<void> {
-  await advanceForecastSession(vanPositions);
+ * clicking the countdown. Always moves the storm clock exactly one 6 h
+ * forecast cycle: the server plays every van forward 6 h along its route
+ * timeline (so Skip after 5 s and waiting the full 2 min end up the same)
+ * and replans from there. */
+export async function advanceForecast(): Promise<void> {
+  await advanceForecastSession();
   safeRevalidate();
 }
 

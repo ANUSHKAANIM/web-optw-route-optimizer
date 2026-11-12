@@ -5,6 +5,7 @@ import { planeDistanceKm } from "@/graph/plane-distance";
 import type { RiskTier } from "@/forecast/risk-tiers";
 import { advanceForecast, setSolverTier, markEvacuated, resetSession } from "./actions";
 import type { SolverTier } from "./session";
+import { distanceAtMinute, type Waypoint } from "./van-timeline";
 
 /**
  * Client-side canvas control room, visually modeled on the provided
@@ -78,6 +79,11 @@ export interface ControlRoomVan {
   totalTravelMinutes: number;
   totalReward: number;
   totalDemandServed: number;
+  /** Storm-time timeline of the current route (start -> stops -> drop-off);
+   * empty when the van has no route and is waiting where it is. */
+  waypoints: Waypoint[];
+  /** People on board right now (picked up, not yet dropped at a shelter). */
+  load: number;
 }
 
 export interface ControlRoomZone {
@@ -161,6 +167,8 @@ interface VanPath {
  * known live position, not a shelter), so a new route visibly continues
  * from where the van actually is instead of snapping back to base. */
 function buildVanPath(van: ControlRoomVan): VanPath {
+  // No route: the van just waits where it is (no phantom line to a shelter).
+  if (van.waypoints.length === 0) return { points: [[van.startX, van.startY]], cum: [0], total: 0 };
   const points: [number, number][] = [
     [van.startX, van.startY],
     ...van.stops.map((s): [number, number] => [s.x, s.y]),
@@ -243,42 +251,28 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
 
   useEffect(() => {
     let raf = 0;
-    let last = performance.now();
+    // Storm time is the clock: the screen countdown (screenSecondsPerForecast)
+    // maps onto exactly one forecast cycle of storm time, so a van is
+    // always drawn where the server's timeline says it is -- and stops at
+    // the 6 h mark, which is exactly where the next forecast replans it
+    // from. No looping: a finished van waits at its drop-off shelter.
+    const cycleMinutes = timing.stormHoursPerForecast * 60;
+    const forecastPulledAtMs = zone ? new Date(zone.nextUpdateIso).getTime() - timing.screenSecondsPerForecast * 1000 : Date.now();
     const loop = (ts: number) => {
-      const dt = Math.min(0.1, (ts - last) / 1000);
-      last = ts;
+      const screenSec = Math.max(0, (Date.now() - forecastPulledAtMs) / 1000);
+      const stormMin = Math.min(cycleMinutes, (screenSec / timing.screenSecondsPerForecast) * cycleMinutes);
       for (const v of vans) {
-        const path = paths.get(v.id)!;
         const prog = progressRef.current.get(v.id)!;
-        if (path.total <= 0) {
-          raf = requestAnimationFrame(loop);
-          draw(ts);
-          return;
-        }
-        // Compress the route's real travel time into a watchable pace --
-        // slower than a 1:1 compression so the route is easy to follow.
-        const durationSeconds = Math.max(18, Math.min(90, v.totalTravelMinutes * 1.3));
-        const speedKmPerSec = path.total / durationSeconds;
-        if (prog.s >= path.total) {
-          prog.hold += dt;
-          if (prog.hold > 3.2) {
-            prog.s = 0;
-            prog.hold = 0;
-          }
-        } else {
-          prog.s = Math.min(path.total, prog.s + speedKmPerSec * dt);
-        }
+        prog.s = v.waypoints.length > 1 ? distanceAtMinute(v.waypoints, stormMin) : 0;
 
-        // The van's animation just passed a stop -- mask it server-side
-        // immediately (fire-and-forget; animation never waits on this)
-        // so it's excluded from every van's candidates from here on.
+        // Mark villages as reached for live display (the server does its
+        // own authoritative 6 h play-out when the next forecast is pulled).
         const reported = reportedRef.current.get(v.id)!;
-        v.stops.forEach((stop, i) => {
-          if (reported.has(stop.nodeId)) return;
-          if (prog.s < path.cum[i + 1]) return;
+        for (const stop of v.stops) {
+          if (reported.has(stop.nodeId) || stop.arrivalMinutes > stormMin) continue;
           reported.add(stop.nodeId);
           void markEvacuated(stop.nodeId);
-        });
+        }
       }
       draw(ts);
       raf = requestAnimationFrame(loop);
@@ -476,17 +470,9 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
     if (pending) return;
     setPending(true);
     try {
-      // Snapshot where every van visually is RIGHT NOW (its live
-      // animated position along its current route) and send that to the
-      // server -- the new route it computes must start from here, not
-      // from the shelter.
-      const vanPositions = vans.map((v) => {
-        const path = paths.get(v.id)!;
-        const prog = progressRef.current.get(v.id)!;
-        const [x, y] = pointOnPath(path, prog.s);
-        return { vanId: v.id, x, y };
-      });
-      await advanceForecast(vanPositions);
+      // The server moves every van exactly one forecast cycle (6 h)
+      // along its route, however long the countdown actually ran.
+      await advanceForecast();
       setFlash(true);
       setTimeout(() => setFlash(false), 2500);
     } finally {
