@@ -41,6 +41,7 @@ export default function ControlRoomPage() {
       tier: state?.tier ?? "normal",
       riskScore: state?.riskScore ?? 0,
       evacuated: evacuatedCellIds.has(n.id),
+      status: session.villageStatus.get(n.id) ?? null,
     };
   });
 

@@ -1,5 +1,5 @@
 import { SyntheticCellProvider } from "@/data/synthetic-cell-provider";
-import { buildGraph } from "@/graph/build-graph";
+import { buildGraph, AVG_TRAVEL_SPEED_KMH } from "@/graph/build-graph";
 import { planeDistanceKm } from "@/graph/plane-distance";
 import { routeCluster, DEFAULT_CLUSTER_ROUTING_THRESHOLDS, type ClusterTeam, type ClusterRoutingThresholds } from "@/solver/cluster-router";
 import { resolveTeamProcessingOrder } from "@/solver/contested-cell-arbitration";
@@ -12,7 +12,7 @@ import { positionAtMinute, type Waypoint } from "./van-timeline";
 /**
  * A small, fast demo scenario wired through the SAME real solver stack
  * /rolling-horizon uses (cluster-router's greedy/neural/exact dispatch,
- * the real forecast engine) -- just sized down (20 nodes, 2 shelters, 4
+ * the real forecast engine) -- just sized down (36 villages, 2 shelters, 4
  * vans) so every tick is fast enough to click through live.
  *
  * Deliberately NOT built on RollingHorizonController: that controller
@@ -33,7 +33,7 @@ import { positionAtMinute, type Waypoint } from "./van-timeline";
  *
  * Two shelters, not one: each van has a fixed HOME shelter (it must
  * return there -- the depot in its own routeCluster() call), but every
- * van can still be sent to ANY of the 18 villages regardless of which
+ * van can still be sent to ANY of the 36 villages regardless of which
  * shelter is geographically closer -- there's no per-shelter catchment
  * here, just a shared candidate pool with a cross-shelter exclusion set
  * (so the two shelters' vans never both claim the same village in one
@@ -148,15 +148,34 @@ export interface ControlRoomSession {
   shelterServed: Map<string, number>;
   solverTier: SolverTier;
   log: string[];
+  /** Why each village is (or isn't) in a van's plan this window -- shown
+   * when hovering a village. Recomputed on every forecast. */
+  villageStatus: Map<string, VillageStatus>;
+}
+
+export interface VillageStatus {
+  /** "assigned" = in some van's plan; "waiting" = not this window. */
+  state: "assigned" | "waiting" | "evacuated";
+  /** One plain-language line, e.g. "Van 2, trip 1 -- arrives in 1.4 h". */
+  reason: string;
+  /** The planner's score for this village this forecast. */
+  score: number;
+  /** Hours left until this village's deadline (null = no deadline). */
+  deadlineHours: number | null;
 }
 
 function createSession(seed: number = SEED, startedAt: Date = SESSION_STARTED_AT): ControlRoomSession {
   const cells = new SyntheticCellProvider({
-    cellCount: 20,
+    // 36 villages + 2 shelters, spread over a slightly bigger map: half the
+    // villages around the two towns, half scattered across the whole map,
+    // and none closer than 3.5 km to another node -- so the demo lasts
+    // longer without dots and route lines piling up on each other.
+    cellCount: 38,
     clusterCount: SHELTER_COUNT,
-    planeHalfSizeKm: 16,
-    isolatedFraction: 0,
+    planeHalfSizeKm: 20,
+    isolatedFraction: 0.5,
     clusterJitterKm: 9,
+    minSpacingKm: 3.5,
     seed,
   }).getNodes();
   const shelters = cells.filter((n) => n.role === "shelter");
@@ -192,6 +211,7 @@ function createSession(seed: number = SEED, startedAt: Date = SESSION_STARTED_AT
     shelterServed: new Map(shelters.map((s) => [s.id, 0])),
     solverTier: "real",
     log: [],
+    villageStatus: new Map(),
   };
 }
 
@@ -200,7 +220,7 @@ const globalForControlRoom = globalThis as unknown as { controlRoomSession?: Con
 // rolling-horizon change has no lastForecastAt and a 2-minute forecast
 // engine -- discard it rather than mixing old and new clocks.
 const cachedSession = globalForControlRoom.controlRoomSession;
-export const session = cachedSession && cachedSession.vanTrips ? cachedSession : createSession();
+export const session = cachedSession && cachedSession.villageStatus && cachedSession.origins.length === 36 ? cachedSession : createSession();
 if (process.env.NODE_ENV !== "production") globalForControlRoom.controlRoomSession = session;
 
 export function logEvent(message: string): void {
@@ -269,7 +289,11 @@ export async function advanceForecast(): Promise<void> {
   const planningMinutes = Math.min(shiftLeftMinutes, LOOKAHEAD_MINUTES);
 
   const lastTick = session.lastTick;
-  const { priorities, riskScores } = priorityFromForecastTick(session.cells, lastTick);
+  // At-risk villages first: an unthreatened village scores only 5% of its
+  // population (vs the project-wide 30%), so a big safe village no longer
+  // outranks a small threatened one -- safe villages are picked only when
+  // a van has spare time and nothing at-risk is reachable.
+  const { priorities, riskScores } = priorityFromForecastTick(session.cells, lastTick, SAFE_VILLAGE_URGENCY);
   const thresholds = SOLVER_TIER_THRESHOLDS[session.solverTier];
   // Per-village forecast-driven evacuation deadlines. The engine reports
   // windows in storm-minutes-from-session-start, but every solver's clock
@@ -406,6 +430,7 @@ export async function advanceForecast(): Promise<void> {
   }
 
   rebuildVanViews();
+  session.villageStatus = explainVillages(priorities, nowMinutes, planningMinutes, shelterCommitted);
 
   const trips = Array.from(session.vanTrips.values()).reduce((a, t) => a + t.length, 0);
   const sheltered = Array.from(session.shelterServed.values()).reduce((a, b) => a + b, 0);
@@ -415,6 +440,69 @@ export async function advanceForecast(): Promise<void> {
       ? `Forecast ${nextTick} (storm +${nowMinutes / 60} h): storm in the ${lastTick.zone.concentration.toLowerCase()} -- ${trips} trip(s) planned across ${session.vanTrips.size} van(s) for the next ${planningMinutes / 60} h (${methods.join(", ")}). ${sheltered} sheltered, ${onBoard} on board.`
       : `Forecast ${nextTick}: every van's ${VAN_SHIFT_HOURS} h shift is used up -- ${sheltered} people sheltered in total.`,
   );
+}
+
+/** Urgency floor for an unthreatened village in this page's scoring (the
+ * project-wide default is 0.3) -- see the priorityFromForecastTick call. */
+const SAFE_VILLAGE_URGENCY = 0.05;
+
+/** One plain-language reason per village for the hover tooltip: which van
+ * is coming and when, or the first rule that explains why none is. */
+function explainVillages(
+  priorities: ReadonlyMap<string, number>,
+  nowMinutes: number,
+  planningMinutes: number,
+  shelterCommitted: ReadonlyMap<string, number>,
+): Map<string, VillageStatus> {
+  const out = new Map<string, VillageStatus>();
+  const tick = session.lastTick!;
+  const assigned = new Map<string, { vanId: number; trip: number; arrive: number }>();
+  for (const [vanId, trips] of session.vanTrips) {
+    trips.forEach((t, k) => {
+      for (const s of t.stops) assigned.set(s.nodeId, { vanId, trip: k + 1, arrive: s.arrivalMinutes });
+    });
+  }
+  const freeRoom = Math.max(0, ...session.shelters.map((s) => s.capacity - (shelterCommitted.get(s.id) ?? 0)));
+  const hours = (min: number) => `${(min / 60).toFixed(1)} h`;
+
+  for (const village of session.origins) {
+    const score = priorities.get(village.id) ?? 0;
+    const state = tick.cellStates.get(village.id);
+    const minutesLeft = state?.window ? state.window.closeMinutes - nowMinutes : null;
+    const deadlineHours = minutesLeft === null ? null : minutesLeft / 60;
+    const base = { score, deadlineHours };
+
+    if (session.evacuatedCellIds.has(village.id)) {
+      out.set(village.id, { ...base, state: "evacuated", reason: "Already evacuated." });
+      continue;
+    }
+    const a = assigned.get(village.id);
+    if (a) {
+      out.set(village.id, { ...base, state: "assigned", reason: `Van ${a.vanId + 1}, trip ${a.trip} -- arrives in ${hours(a.arrive)}.` });
+      continue;
+    }
+    // Not in any plan -- report the first rule that explains it.
+    const nearestKm = Math.min(...Array.from(session.vanStartPositions.values(), (p) => planeDistanceKm([p.x, p.y], [village.x, village.y])));
+    const reachMinutes = (nearestKm / AVG_TRAVEL_SPEED_KMH) * 60;
+    let reason: string;
+    if (planningMinutes <= 0) {
+      reason = "Every van's shift is over.";
+    } else if (minutesLeft !== null && minutesLeft <= 0) {
+      reason = `Missed: its deadline passed ${hours(-minutesLeft)} ago.`;
+    } else if (minutesLeft !== null && reachMinutes > minutesLeft) {
+      reason = `No van can get there before its deadline (${hours(minutesLeft)} left, nearest van ${hours(reachMinutes)} away).`;
+    } else if (village.demand > freeRoom) {
+      reason = `No shelter has room for ${village.demand} more people.`;
+    } else if (!state || state.tier === "normal") {
+      reason = "Not threatened -- vans are busy with at-risk villages this window. Replanned next forecast.";
+    } else if (reachMinutes * 2 > planningMinutes) {
+      reason = `Too far for this ${hours(planningMinutes)} window (nearest van ${hours(reachMinutes)} away). Replanned next forecast.`;
+    } else {
+      reason = "Lower score than the villages the vans could fit this window. Replanned next forecast.";
+    }
+    out.set(village.id, { ...base, state: "waiting", reason });
+  }
+  return out;
 }
 
 /** Upper bound on back-to-back trips per van per 8 h window. */

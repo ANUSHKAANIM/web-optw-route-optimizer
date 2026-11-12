@@ -38,6 +38,12 @@ export interface SyntheticCellConfig {
   /** Standard deviation (km) of village scatter around its cluster center. */
   clusterJitterKm: number;
   seed: number;
+  /** Optional minimum distance (km) between any two villages, and between
+   * a village and a shelter -- re-samples a position (up to a fixed number
+   * of tries) when it lands too close to an existing node. 0 / undefined =
+   * no spacing rule, the original behavior every existing caller relies on.
+   * Used by small demo maps so dots and route lines don't pile up. */
+  minSpacingKm?: number;
 }
 
 export const DEFAULT_SYNTHETIC_CONFIG: SyntheticCellConfig = {
@@ -62,7 +68,7 @@ export class SyntheticCellProvider implements CellProvider {
   }
 
   getNodes(): GraphNode[] {
-    const { cellCount, clusterCount, planeHalfSizeKm, isolatedFraction, clusterJitterKm, seed } = this.config;
+    const { cellCount, clusterCount, planeHalfSizeKm, isolatedFraction, clusterJitterKm, seed, minSpacingKm = 0 } = this.config;
     const rng = new SeededRandom(seed);
 
     const originCount = Math.max(0, cellCount - clusterCount);
@@ -87,12 +93,17 @@ export class SyntheticCellProvider implements CellProvider {
       const center = clusterCenters[clusterIdx];
       const isolated = rng.next() < isolatedFraction;
 
-      const x = isolated
-        ? rng.uniform(-planeHalfSizeKm, planeHalfSizeKm)
-        : center.x + gaussianJitter(rng, clusterJitterKm);
-      const y = isolated
-        ? rng.uniform(-planeHalfSizeKm, planeHalfSizeKm)
-        : center.y + gaussianJitter(rng, clusterJitterKm);
+      const sample = () => ({
+        x: isolated ? rng.uniform(-planeHalfSizeKm, planeHalfSizeKm) : center.x + gaussianJitter(rng, clusterJitterKm),
+        y: isolated ? rng.uniform(-planeHalfSizeKm, planeHalfSizeKm) : center.y + gaussianJitter(rng, clusterJitterKm),
+      });
+      let { x, y } = sample();
+      if (minSpacingKm > 0) {
+        const tooClose = (px: number, py: number) =>
+          clusterCenters.some((c) => Math.hypot(c.x - px, c.y - py) < minSpacingKm) ||
+          origins.some((o) => Math.hypot(o.x - px, o.y - py) < minSpacingKm);
+        for (let attempt = 0; attempt < 60 && tooClose(x, y); attempt++) ({ x, y } = sample());
+      }
 
       const demand = Math.round(rng.uniform(50, 500));
       clusterDemand[clusterIdx] += demand;

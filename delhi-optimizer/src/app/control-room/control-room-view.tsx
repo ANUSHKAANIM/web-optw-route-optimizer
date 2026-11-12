@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from 
 import { planeDistanceKm } from "@/graph/plane-distance";
 import type { RiskTier } from "@/forecast/risk-tiers";
 import { advanceForecast, setSolverTier, markEvacuated, resetSession } from "./actions";
-import type { SolverTier } from "./session";
+import type { SolverTier, VillageStatus } from "./session";
 import { distanceAtMinute, type Waypoint } from "./van-timeline";
 
 /**
@@ -35,6 +35,8 @@ export interface ControlRoomNode {
    * (see markEvacuated in actions.ts) -- masked out of every van's
    * candidate pool server-side from that moment on, not just visually. */
   evacuated: boolean;
+  /** Why this village is or isn't in a van's plan (null before the first forecast). */
+  status: VillageStatus | null;
 }
 
 export interface ControlRoomStop {
@@ -740,9 +742,23 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
                     lineHeight: 1.5,
                   }}
                 >
-                  {hover.node.name} &middot; demand {hover.node.demand} &middot;{" "}
-                  {hover.node.evacuated ? "evacuated" : hover.node.tier}
-                  {!hover.node.evacuated && hover.node.tier !== "normal" && ` (${Math.round(hover.node.riskScore * 100)}% risk)`}
+                  <div>
+                    {hover.node.name} &middot; {hover.node.demand} people &middot;{" "}
+                    {hover.node.evacuated ? "evacuated" : hover.node.tier}
+                    {!hover.node.evacuated && hover.node.tier !== "normal" && ` (${Math.round(hover.node.riskScore * 100)}% risk)`}
+                  </div>
+                  {!hover.node.evacuated && hover.node.status && (
+                    <>
+                      <div style={{ color: "#9aa6b6" }}>
+                        score {hover.node.status.score}
+                        {hover.node.status.deadlineHours !== null &&
+                          ` · deadline ${hover.node.status.deadlineHours > 0 ? `in ${hover.node.status.deadlineHours.toFixed(1)} h` : "passed"}`}
+                      </div>
+                      <div style={{ color: hover.node.status.state === "assigned" ? "#6ee7a0" : "#ffd166", fontFamily: `${sansFont}, sans-serif`, marginTop: 2 }}>
+                        {hover.node.status.reason}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>

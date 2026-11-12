@@ -24,7 +24,16 @@ export interface ForecastPrioritySnapshot {
  * engine's tier-based reward multiplier (tier escalation + TOCPUR-style
  * accumulation, see cyclone-forecast-engine.ts).
  */
-export function priorityFromForecastTick(nodes: GraphNode[], tick: ForecastTickResult): ForecastPrioritySnapshot {
+export function priorityFromForecastTick(
+  nodes: GraphNode[],
+  tick: ForecastTickResult,
+  /** Urgency floor for a village with zero risk (0..1). Defaults to the
+   * project-wide 0.3; a caller can lower it so unthreatened villages are
+   * only picked when nothing at-risk is reachable (the control room uses
+   * 0.05). Every other caller keeps the default, so benchmark rewards are
+   * unchanged. */
+  baselineUrgencyFraction: number = BASELINE_URGENCY_FRACTION,
+): ForecastPrioritySnapshot {
   const priorities = new Map<string, number>();
   const riskScores = new Map<string, number>();
 
@@ -37,7 +46,7 @@ export function priorityFromForecastTick(nodes: GraphNode[], tick: ForecastTickR
     }
 
     riskScores.set(node.id, state.riskScore);
-    const urgency = BASELINE_URGENCY_FRACTION + (1 - BASELINE_URGENCY_FRACTION) * state.riskScore;
+    const urgency = baselineUrgencyFraction + (1 - baselineUrgencyFraction) * state.riskScore;
     priorities.set(node.id, Math.round(node.demand * urgency * state.rewardMultiplier));
   }
 
