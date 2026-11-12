@@ -1,5 +1,5 @@
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
-import { session, VAN_COLORS, VAN_COUNT, FORECAST_INTERVAL_SECONDS, STORM_HOURS_PER_FORECAST, LOOKAHEAD_HOURS, VAN_SHIFT_HOURS, stormMinutesElapsed, screenNextUpdateIso } from "./session";
+import { session, VAN_COLORS, VAN_COUNT, FORECAST_INTERVAL_SECONDS, STORM_HOURS_PER_FORECAST, LOOKAHEAD_HOURS, VAN_SHIFT_HOURS, stormMinutesElapsed, stormMinutesUntilScheduled, screenNextUpdateIso } from "./session";
 import { ControlRoomView, type ControlRoomNode, type ControlRoomVan, type ControlRoomZone } from "./control-room-view";
 
 const plexMono = IBM_Plex_Mono({ weight: "500", subsets: ["latin"] });
@@ -139,6 +139,7 @@ export default function ControlRoomPage() {
       timing={{
         screenSecondsPerForecast: FORECAST_INTERVAL_SECONDS,
         stormHoursPerForecast: STORM_HOURS_PER_FORECAST,
+        cycleStormMinutes: stormMinutesUntilScheduled(),
         lookaheadHours: LOOKAHEAD_HOURS,
         shiftHours: VAN_SHIFT_HOURS,
         stormHoursElapsed: stormMinutesElapsed() / 60,

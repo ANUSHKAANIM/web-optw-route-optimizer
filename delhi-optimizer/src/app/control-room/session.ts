@@ -62,7 +62,14 @@ const SESSION_STARTED_AT = new Date();
  *    the demo plays. 2 min on screen = one 6 h forecast cycle. */
 export const FORECAST_INTERVAL_SECONDS = 120;
 export const STORM_HOURS_PER_FORECAST = 6;
-const STORM_SECONDS_PER_FORECAST = STORM_HOURS_PER_FORECAST * 3600;
+const SCHEDULED_CYCLE_MINUTES = STORM_HOURS_PER_FORECAST * 60;
+/** Storm minutes that pass per real (screen) second: 360 / 120 = 3. */
+const STORM_MINUTES_PER_SCREEN_SECOND = SCHEDULED_CYCLE_MINUTES / FORECAST_INTERVAL_SECONDS;
+/** The forecast engine ticks once per storm MINUTE (tick = storm minutes
+ * since the start), so a forecast can be issued at any moment -- on the
+ * regular 6 h schedule or as a sudden special advisory in between -- and
+ * every deadline it computes is still exact. */
+const ENGINE_TICK_SECONDS = 60;
 export const SHELTER_COUNT = 2;
 export const VAN_COUNT = 4;
 const VANS_PER_SHELTER = VAN_COUNT / SHELTER_COUNT;
@@ -103,10 +110,17 @@ export interface ControlRoomSession {
   vanHomeShelterId: Map<number, string>;
   forecastEngine: CycloneForecastEngine;
   lastTick: ForecastTickResult | null;
+  /** How many forecasts (scheduled + special) have been issued, minus 1. */
   currentTick: number;
-  /** Real (screen) time the last forecast was pulled -- the screen
-   * countdown runs FORECAST_INTERVAL_SECONDS from here. */
+  /** Real (screen) time the last forecast was pulled. */
   lastForecastAt: Date;
+  /** Storm time (minutes since the start) of the last forecast. Grows by
+   * exactly 6 h for a scheduled forecast, or by however much storm time
+   * has really passed for a special advisory. */
+  stormMinutes: number;
+  /** Storm time of the next SCHEDULED forecast (multiples of 6 h) -- a
+   * special advisory doesn't move the regular schedule. */
+  nextScheduledMinutes: number;
   vanRoutes: Map<number, Route>;
   /** Each van's position AT THE START of its currently-displayed route --
    * i.e. wherever it was when the last tick was pulled. The client is the
@@ -180,7 +194,7 @@ function createSession(seed: number = SEED, startedAt: Date = SESSION_STARTED_AT
   }).getNodes();
   const shelters = cells.filter((n) => n.role === "shelter");
   const origins = cells.filter((n) => n.role === "origin");
-  const forecastEngine = new CycloneForecastEngine(cells, seed, startedAt, STORM_SECONDS_PER_FORECAST);
+  const forecastEngine = new CycloneForecastEngine(cells, seed, startedAt, ENGINE_TICK_SECONDS);
 
   const vanHomeShelterId = new Map<number, string>();
   const vanStartPositions = new Map<number, VanPosition>();
@@ -201,6 +215,8 @@ function createSession(seed: number = SEED, startedAt: Date = SESSION_STARTED_AT
     lastTick: null,
     currentTick: -1,
     lastForecastAt: startedAt,
+    stormMinutes: 0,
+    nextScheduledMinutes: 0,
     vanRoutes: new Map(),
     vanStartPositions,
     vanDropoffShelterId,
@@ -220,7 +236,7 @@ const globalForControlRoom = globalThis as unknown as { controlRoomSession?: Con
 // rolling-horizon change has no lastForecastAt and a 2-minute forecast
 // engine -- discard it rather than mixing old and new clocks.
 const cachedSession = globalForControlRoom.controlRoomSession;
-export const session = cachedSession && cachedSession.villageStatus && cachedSession.origins.length === 20 ? cachedSession : createSession();
+export const session = cachedSession && cachedSession.nextScheduledMinutes !== undefined && cachedSession.origins.length === 20 ? cachedSession : createSession();
 if (process.env.NODE_ENV !== "production") globalForControlRoom.controlRoomSession = session;
 
 export function logEvent(message: string): void {
@@ -274,13 +290,29 @@ function vanPositionNode(pos: VanPosition): GraphNode {
  * via the van's OWN home shelter as depot (routeCluster can't batch vans
  * with different depots), with only its free seats and only the shelter
  * space not already used or reserved. */
-export async function advanceForecast(): Promise<void> {
-  const stepMinutes = STORM_HOURS_PER_FORECAST * 60;
-  if (session.currentTick >= 0) playOutPreviousPlans(stepMinutes);
+export async function advanceForecast(kind: "scheduled" | "special" = "scheduled"): Promise<void> {
+  const first = session.currentTick < 0;
+  const untilScheduled = session.nextScheduledMinutes - session.stormMinutes;
+  let stepMinutes: number;
+  if (first) {
+    stepMinutes = 0;
+  } else if (kind === "scheduled") {
+    // Skip / countdown: jump to the next scheduled forecast.
+    stepMinutes = untilScheduled;
+  } else {
+    // Special advisory: issued NOW -- only the storm time that has really
+    // passed on screen since the last forecast (at least 1 min, and never
+    // past the next scheduled one).
+    const screenSeconds = (Date.now() - session.lastForecastAt.getTime()) / 1000;
+    stepMinutes = Math.max(1, Math.min(untilScheduled - 1, Math.round(screenSeconds * STORM_MINUTES_PER_SCREEN_SECOND)));
+  }
+  if (!first) playOutPreviousPlans(stepMinutes);
 
-  const nextTick = session.currentTick + 1;
-  session.lastTick = session.forecastEngine.advanceTick(nextTick);
-  session.currentTick = nextTick;
+  session.stormMinutes += stepMinutes;
+  if (first || kind === "scheduled") session.nextScheduledMinutes = session.stormMinutes + SCHEDULED_CYCLE_MINUTES;
+  session.lastTick = session.forecastEngine.advanceTick(session.stormMinutes);
+  session.currentTick += 1;
+  const nextTick = session.currentTick;
   session.lastForecastAt = new Date();
 
   // Storm time at this replan, and what's left of every van's shift.
@@ -437,7 +469,7 @@ export async function advanceForecast(): Promise<void> {
   const onBoard = Array.from(session.vanLoad.values()).reduce((a, b) => a + b, 0);
   logEvent(
     planningMinutes > 0
-      ? `Forecast ${nextTick} (storm +${nowMinutes / 60} h): storm in the ${lastTick.zone.concentration.toLowerCase()} -- ${trips} trip(s) planned across ${session.vanTrips.size} van(s) for the next ${planningMinutes / 60} h (${methods.join(", ")}). ${sheltered} sheltered, ${onBoard} on board.`
+      ? `${kind === "special" && !first ? "SPECIAL ADVISORY" : "Forecast"} ${nextTick} (storm +${(nowMinutes / 60).toFixed(1)} h${kind === "special" && !first ? `, ${(stepMinutes / 60).toFixed(1)} h after the last one` : ""}): every van rerouted from where it is now; storm in the ${lastTick.zone.concentration.toLowerCase()} -- ${trips} trip(s) planned across ${session.vanTrips.size} van(s) for the next ${planningMinutes / 60} h (${methods.join(", ")}). ${sheltered} sheltered, ${onBoard} on board.`
       : `Forecast ${nextTick}: every van's ${VAN_SHIFT_HOURS} h shift is used up -- ${sheltered} people sheltered in total.`,
   );
 }
@@ -629,15 +661,22 @@ function nearestShelterWithRoom(
   return best;
 }
 
-/** Storm time elapsed at the current forecast, in minutes. Forecast 0 is
- * storm time 0; each later forecast is another 6 h. */
+/** Storm time elapsed at the current forecast, in minutes. */
 export function stormMinutesElapsed(): number {
-  return Math.max(0, session.currentTick) * STORM_HOURS_PER_FORECAST * 60;
+  return session.stormMinutes;
 }
 
-/** When the on-screen countdown reaches zero -- screen time, not storm time. */
+/** Storm minutes between the last forecast and the next SCHEDULED one --
+ * 360 after a scheduled forecast, less after a special advisory. */
+export function stormMinutesUntilScheduled(): number {
+  return session.currentTick < 0 ? 0 : session.nextScheduledMinutes - session.stormMinutes;
+}
+
+/** When the on-screen countdown reaches the next scheduled forecast --
+ * screen time, at 2 min per 6 h of storm time. */
 export function screenNextUpdateIso(): string {
-  return new Date(session.lastForecastAt.getTime() + FORECAST_INTERVAL_SECONDS * 1000).toISOString();
+  const screenSeconds = stormMinutesUntilScheduled() / STORM_MINUTES_PER_SCREEN_SECOND;
+  return new Date(session.lastForecastAt.getTime() + screenSeconds * 1000).toISOString();
 }
 
 export function setSolverTierSync(tier: SolverTier): void {

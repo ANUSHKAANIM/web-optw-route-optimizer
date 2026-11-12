@@ -23,7 +23,15 @@ function safeRevalidate(): void {
  * timeline (so Skip after 5 s and waiting the full 2 min end up the same)
  * and replans from there. */
 export async function advanceForecast(): Promise<void> {
-  await advanceForecastSession();
+  await advanceForecastSession("scheduled");
+  safeRevalidate();
+}
+
+/** A sudden special advisory, issued NOW: only the storm time that has
+ * really passed since the last forecast is played out, then every van is
+ * rerouted from exactly where it is. The regular 6 h schedule is unchanged. */
+export async function issueSpecialAdvisory(): Promise<void> {
+  await advanceForecastSession("special");
   safeRevalidate();
 }
 

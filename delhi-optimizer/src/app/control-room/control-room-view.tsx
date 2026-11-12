@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { planeDistanceKm } from "@/graph/plane-distance";
 import type { RiskTier } from "@/forecast/risk-tiers";
-import { advanceForecast, setSolverTier, markEvacuated, resetSession } from "./actions";
+import { advanceForecast, issueSpecialAdvisory, setSolverTier, markEvacuated, resetSession } from "./actions";
 import type { SolverTier, VillageStatus } from "./session";
 import { distanceAtMinute, type Waypoint } from "./van-timeline";
 
@@ -112,6 +112,9 @@ interface Bounds {
 export interface ControlRoomTiming {
   screenSecondsPerForecast: number;
   stormHoursPerForecast: number;
+  /** Storm minutes from the last forecast to the next SCHEDULED one: 360
+   * normally, less after a special advisory (the schedule doesn't move). */
+  cycleStormMinutes: number;
   lookaheadHours: number;
   shiftHours: number;
   stormHoursElapsed: number;
@@ -209,7 +212,7 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
   const [hover, setHover] = useState<{ x: number; y: number; node: ControlRoomNode } | null>(null);
   const [pending, setPending] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const [flash, setFlash] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
   const [, forceTick] = useState(0);
 
   const paths = useMemo(() => new Map(vans.map((v) => [v.id, buildVanPath(v)])), [vans]);
@@ -261,11 +264,12 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
     // always drawn where the server's timeline says it is -- and stops at
     // the 6 h mark, which is exactly where the next forecast replans it
     // from. No looping: a finished van waits at its drop-off shelter.
-    const cycleMinutes = timing.stormHoursPerForecast * 60;
-    const forecastPulledAtMs = zone ? new Date(zone.nextUpdateIso).getTime() - timing.screenSecondsPerForecast * 1000 : Date.now();
+    const stormMinPerScreenSec = (timing.stormHoursPerForecast * 60) / timing.screenSecondsPerForecast;
+    const cycleMinutes = timing.cycleStormMinutes;
+    const forecastPulledAtMs = zone ? new Date(zone.nextUpdateIso).getTime() - (cycleMinutes / stormMinPerScreenSec) * 1000 : Date.now();
     const loop = (ts: number) => {
       const screenSec = Math.max(0, (Date.now() - forecastPulledAtMs) / 1000);
-      const stormMin = Math.min(cycleMinutes, (screenSec / timing.screenSecondsPerForecast) * cycleMinutes);
+      const stormMin = Math.min(cycleMinutes, screenSec * stormMinPerScreenSec);
       for (const v of vans) {
         const prog = progressRef.current.get(v.id)!;
         prog.s = v.waypoints.length > 1 ? distanceAtMinute(v.waypoints, stormMin) : 0;
@@ -478,8 +482,22 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
       // The server moves every van exactly one forecast cycle (6 h)
       // along its route, however long the countdown actually ran.
       await advanceForecast();
-      setFlash(true);
-      setTimeout(() => setFlash(false), 2500);
+      setFlash("Forecast just updated -- routes recalculated");
+      setTimeout(() => setFlash(null), 2500);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  /** Sudden special advisory: issued at the storm time that has really
+   * passed, every van rerouted from exactly where it is right now. */
+  async function handleSpecial() {
+    if (pending) return;
+    setPending(true);
+    try {
+      await issueSpecialAdvisory();
+      setFlash("Special advisory -- every van rerouted from where it is now");
+      setTimeout(() => setFlash(null), 3500);
     } finally {
       setPending(false);
     }
@@ -602,14 +620,14 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
               <div style={{ textAlign: "right", fontSize: 12, color: "#9aa6b6", lineHeight: 1.5 }}>
                 <div>Tick <span style={{ color: "#e6ebf2", fontFamily: `${monoFont}, monospace` }}>{Math.max(0, tick)}</span></div>
                 <div>{solverTier === "real" ? "Neural solver" : "Greedy solver"}</div>
-                <div>Storm time <span style={{ color: "#e6ebf2", fontFamily: `${monoFont}, monospace` }}>+{timing.stormHoursElapsed} h</span> / {timing.shiftHours} h</div>
+                <div>Storm time <span style={{ color: "#e6ebf2", fontFamily: `${monoFont}, monospace` }}>+{timing.stormHoursElapsed.toFixed(1)} h</span> / {timing.shiftHours} h</div>
                 <div>Planning window <span style={{ color: "#e6ebf2", fontFamily: `${monoFont}, monospace` }}>{timing.lookaheadHours} h</span></div>
               </div>
             </div>
             <div style={{ height: 4, borderRadius: 4, background: "#232b36", overflow: "hidden" }}>
-              <div style={{ height: 4, background: "#5ec8ff", width: `${Math.max(0, Math.min(100, 100 - (remainingMs / (timing.screenSecondsPerForecast * 1000)) * 100))}%` }} />
+              <div style={{ height: 4, background: "#5ec8ff", width: `${Math.max(0, Math.min(100, 100 - (remainingMs / ((timing.cycleStormMinutes / ((timing.stormHoursPerForecast * 60) / timing.screenSecondsPerForecast)) * 1000 || 1)) * 100))}%` }} />
             </div>
-            {flash && <div style={{ fontSize: 12, color: "#5ec8ff", fontWeight: 500 }}>Forecast just updated -- routes recalculated</div>}
+            {flash && <div style={{ fontSize: 12, color: flash.startsWith("Special") ? "#ffb347" : "#5ec8ff", fontWeight: 500 }}>{flash}</div>}
           </button>
         </header>
 
@@ -628,6 +646,25 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
             style={{ borderRadius: 6, padding: "5px 10px", background: solverTier === "real" ? "#1d2634" : "transparent", border: solverTier === "real" ? "1px solid #5ec8ff" : "1px solid #232b36", color: "#e6ebf2", cursor: "pointer", font: "inherit" }}
           >
             Real (neural Pointer Network)
+          </button>
+          <button
+            type="button"
+            onClick={handleSpecial}
+            disabled={pending || tick < 0}
+            title="Issue a sudden special advisory right now -- the storm is re-forecast at the current storm time and every van is rerouted from exactly where it is"
+            style={{
+              marginLeft: 8,
+              borderRadius: 6,
+              padding: "5px 10px",
+              background: "transparent",
+              border: "1px solid #5a4320",
+              color: "#ffb347",
+              cursor: pending ? "wait" : tick < 0 ? "not-allowed" : "pointer",
+              opacity: tick < 0 ? 0.5 : 1,
+              font: "inherit",
+            }}
+          >
+            ⚠ Special advisory
           </button>
           <button
             type="button"
