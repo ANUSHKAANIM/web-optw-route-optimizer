@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { planeDistanceKm } from "@/graph/plane-distance";
 import type { RiskTier } from "@/forecast/risk-tiers";
 import { advanceForecast, setSolverTier, markEvacuated, resetSession } from "./actions";
@@ -47,6 +47,8 @@ export interface ControlRoomStop {
   rewardCollected: number;
   demandServed: number;
   atRisk: boolean;
+  /** Position of this stop in the van's combined multi-trip timeline. */
+  waypointIndex: number;
 }
 
 export interface ControlRoomVan {
@@ -84,6 +86,10 @@ export interface ControlRoomVan {
   waypoints: Waypoint[];
   /** People on board right now (picked up, not yet dropped at a shelter). */
   load: number;
+  /** Mid-plan unloads: a trip ended at a shelter and the van went straight
+   * back out on another, instead of idling until the next forecast. */
+  unloads: { shelterName: string; people: number; waypointIndex: number; afterStopCount: number }[];
+  tripCount: number;
 }
 
 export interface ControlRoomZone {
@@ -169,11 +175,8 @@ interface VanPath {
 function buildVanPath(van: ControlRoomVan): VanPath {
   // No route: the van just waits where it is (no phantom line to a shelter).
   if (van.waypoints.length === 0) return { points: [[van.startX, van.startY]], cum: [0], total: 0 };
-  const points: [number, number][] = [
-    [van.startX, van.startY],
-    ...van.stops.map((s): [number, number] => [s.x, s.y]),
-    [van.dropoffShelterX, van.dropoffShelterY],
-  ];
+  // Every trip's pickups and shelter unloads, in order.
+  const points: [number, number][] = van.waypoints.map((w): [number, number] => [w.x, w.y]);
   const cum = [0];
   for (let i = 1; i < points.length; i++) {
     cum.push(cum[i - 1] + planeDistanceKm(points[i - 1], points[i]));
@@ -674,7 +677,7 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
                   <span style={{ width: 10, height: 10, borderRadius: "50%", display: "block", background: v.color }} />
                   <span style={{ fontFamily: `${monoFont}, monospace`, fontSize: 15, fontWeight: 600 }}>{v.name}</span>
                 </span>
-                <span style={{ fontSize: 12, color: "#9aa6b6" }}>{v.stops.length === 0 ? "No route" : `${v.stops.length} stop${v.stops.length === 1 ? "" : "s"}`}</span>
+                <span style={{ fontSize: 12, color: "#9aa6b6" }}>{v.stops.length === 0 ? "No route" : `${v.stops.length} stop${v.stops.length === 1 ? "" : "s"}${v.tripCount > 1 ? ` · ${v.tripCount} trips` : ""}`}</span>
               </button>
             );
           })}
@@ -804,12 +807,25 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
                     <li style={{ padding: "8px 8px", fontSize: 13, color: "#9aa6b6" }}>Nothing reachable right now -- wait for the next forecast.</li>
                   )}
                   {selVan.stops.map((stop, i) => {
-                    const prevPos = i === 0 ? { x: selVan.startX, y: selVan.startY } : selVan.stops[i - 1];
-                    const legKm = planeDistanceKm([prevPos.x, prevPos.y], [stop.x, stop.y]);
-                    const done = selProg && selPath ? selPath.cum[i + 1] <= selProg.s - 0.01 : false;
-                    const isNow = selProg && selPath ? selPath.cum[i] <= selProg.s && selProg.s < selPath.cum[i + 1] : false;
+                    const wi = stop.waypointIndex;
+                    const prev = selPath?.points[wi - 1] ?? [selVan.startX, selVan.startY];
+                    const legKm = planeDistanceKm(prev, [stop.x, stop.y]);
+                    const done = selProg && selPath ? selPath.cum[wi] <= selProg.s - 0.01 : false;
+                    const isNow = selProg && selPath ? selPath.cum[wi - 1] <= selProg.s && selProg.s < selPath.cum[wi] : false;
+                    const unloadBefore = selVan.unloads.find((u) => u.afterStopCount === i && i > 0);
                     return (
-                      <li key={stop.nodeId} style={{ display: "grid", gridTemplateColumns: "28px minmax(0, 1fr) auto", gap: 10, alignItems: "start", padding: "8px 8px", borderRadius: 8, background: isNow ? "#1b2430" : "transparent", opacity: done ? 0.55 : 1 }}>
+                      <Fragment key={stop.nodeId}>
+                      {unloadBefore && (
+                        <li style={{ display: "grid", gridTemplateColumns: "28px minmax(0, 1fr) auto", gap: 10, alignItems: "start", padding: "8px 8px", borderRadius: 8, opacity: selProg && selPath && selPath.cum[unloadBefore.waypointIndex] <= selProg.s - 0.01 ? 0.55 : 1 }}>
+                          <span style={{ width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: `${monoFont}, monospace`, fontSize: 12, fontWeight: 600, color: "#05080c", background: "#9be3b0" }}>S</span>
+                          <span>
+                            <span style={{ display: "block", fontSize: 14, fontWeight: 500 }}>Unload at {unloadBefore.shelterName}, then head straight back out</span>
+                            <span style={{ display: "block", fontSize: 12, color: "#9aa6b6", marginTop: 1 }}>No waiting for the next forecast -- seats are empty again</span>
+                          </span>
+                          <span />
+                        </li>
+                      )}
+                      <li style={{ display: "grid", gridTemplateColumns: "28px minmax(0, 1fr) auto", gap: 10, alignItems: "start", padding: "8px 8px", borderRadius: 8, background: isNow ? "#1b2430" : "transparent", opacity: done ? 0.55 : 1 }}>
                         <span style={{ width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: `${monoFont}, monospace`, fontSize: 12, fontWeight: 600, color: "#05080c", background: stop.atRisk ? "#ff9f68" : "#ffd166" }}>
                           {i + 1}
                         </span>
@@ -824,6 +840,7 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
                           {isNow && <span style={{ display: "block", color: "#5ec8ff", fontWeight: 600 }}>NOW</span>}
                         </span>
                       </li>
+                      </Fragment>
                     );
                   })}
                   {selVan.stops.length > 0 && (

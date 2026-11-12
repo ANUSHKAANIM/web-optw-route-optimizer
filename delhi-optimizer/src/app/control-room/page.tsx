@@ -49,11 +49,19 @@ export default function ControlRoomPage() {
     const dropoff = sheltersById.get(vanDropoffShelterId.get(i) ?? home.id) ?? home;
     const route = vanRoutes.get(i) ?? null;
     const startPos = vanStartPositions.get(i) ?? { vanId: i, x: home.x, y: home.y };
-    const stops =
-      route?.stops.map((s) => {
+    // Walk the van's back-to-back trips in order, recording where each
+    // pickup and each mid-plan unload sits in the combined timeline
+    // (waypoint 0 = start; each trip adds its stops, then its shelter).
+    const stops: ControlRoomVan["stops"] = [];
+    const unloads: ControlRoomVan["unloads"] = [];
+    let wi = 0;
+    const trips = session.vanTrips.get(i) ?? [];
+    trips.forEach((trip, t) => {
+      for (const s of trip.stops) {
+        wi++;
         const node = nodesById.get(s.nodeId);
         const state = lastTick?.cellStates.get(s.nodeId);
-        return {
+        stops.push({
           nodeId: s.nodeId,
           name: node?.name ?? s.nodeId,
           x: node?.x ?? home.x,
@@ -63,8 +71,15 @@ export default function ControlRoomPage() {
           rewardCollected: s.rewardCollected,
           demandServed: s.demandServed,
           atRisk: state ? state.tier !== "normal" : false,
-        };
-      }) ?? [];
+          waypointIndex: wi,
+        });
+      }
+      wi++;
+      if (t < trips.length - 1) {
+        const sh = sheltersById.get(trip.dropoffShelterId);
+        unloads.push({ shelterName: sh?.name ?? trip.dropoffShelterId, people: trip.totalDemandServed, waypointIndex: wi, afterStopCount: stops.length });
+      }
+    });
     return {
       id: i,
       name: `Van ${String(i + 1).padStart(2, "0")}`,
@@ -85,6 +100,8 @@ export default function ControlRoomPage() {
       totalReward: route?.totalReward ?? 0,
       totalDemandServed: route?.totalDemandServed ?? 0,
       waypoints: session.vanWaypoints.get(i) ?? [],
+      unloads,
+      tripCount: trips.length,
       load: session.vanLoad.get(i) ?? 0,
     };
   });
