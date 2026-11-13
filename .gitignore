@@ -16,3 +16,9 @@ out/
 .env
 .env.local
 .env*.local
+
+# Local assistant / tool files
+.claude/
+CLAUDE.md
+claude chat*.txt
+*.log
