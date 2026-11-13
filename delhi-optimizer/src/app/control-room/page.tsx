@@ -5,6 +5,10 @@ import { ControlRoomView, type ControlRoomNode, type ControlRoomVan, type Contro
 const plexMono = IBM_Plex_Mono({ weight: "500", subsets: ["latin"] });
 const plexSans = IBM_Plex_Sans({ weight: "400", subsets: ["latin"] });
 
+// The session lives in server memory and changes on every forecast, so
+// render on every request -- never a copy frozen at build time.
+export const dynamic = "force-dynamic";
+
 /**
  * Server shell: reads the real, live control-room session (session.ts)
  * and hands the client component plain, serializable props. All

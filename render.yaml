@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: cyclone-control-room
+    runtime: node
+    plan: free
+    rootDir: delhi-optimizer
+    buildCommand: npm ci && npx prisma generate && npm run build
+    startCommand: npm start
+    healthCheckPath: /control-room
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Only needed so `prisma generate` can load its config; the control
+      # room never touches a database.
+      - key: DATABASE_URL
+        value: postgresql://unused:unused@localhost:5432/unused
