@@ -8,6 +8,9 @@ services:
     startCommand: npm start
     healthCheckPath: /control-room
     envVars:
+      # 512 MB server: hide the memory-heavy Hurricane Idalia scenario.
+      - key: LOW_MEMORY_DEPLOY
+        value: "1"
       - key: NODE_VERSION
         value: "20"
       # Only needed so `prisma generate` can load its config; the control

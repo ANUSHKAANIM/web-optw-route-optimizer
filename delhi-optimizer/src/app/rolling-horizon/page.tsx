@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getAppSolverTier } from "@/lib/solver-preference";
+import { isLowMemoryDeploy } from "@/lib/deploy-limits";
 import { OptimizerMap } from "@/components/map/optimizer-map";
 import { ForecastCountdown } from "@/components/forecast-countdown";
 import { buildHeatmapGrid, type BinCellInput } from "@/components/map/risk-heatmap-binning";
@@ -173,9 +174,11 @@ export default async function RollingHorizonPage({
             <Link href="/benchmark" className="rounded border px-2 py-1 text-xs hover:bg-accent">
               Reward benchmark →
             </Link>
-            <Link href="/idalia-preview" className="rounded border px-2 py-1 text-xs hover:bg-accent">
-              Same planner on real Idalia data →
-            </Link>
+            {!isLowMemoryDeploy() && (
+              <Link href="/idalia-preview" className="rounded border px-2 py-1 text-xs hover:bg-accent">
+                Same planner on real Idalia data →
+              </Link>
+            )}
           </div>
         </div>
         {/* Solver tier: "fast" (greedy, the long-standing default) vs

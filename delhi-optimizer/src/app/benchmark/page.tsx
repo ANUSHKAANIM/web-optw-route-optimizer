@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { isLowMemoryDeploy, LOW_MEMORY_IDALIA_NOTE } from "@/lib/deploy-limits";
 import { getBenchmarkState } from "./state";
 import { runComparison, runAllZonesComparison } from "./actions";
 import type { ComparisonMethod } from "@/solver/method-comparison";
@@ -24,6 +25,7 @@ export default function BenchmarkPage() {
   const state = getBenchmarkState();
   const { results, scenarioLabel, candidateCount, error, source, includeCplex, allZones } = state;
 
+  const lowMemory = isLowMemoryDeploy();
   const maxReward = results ? Math.max(1, ...results.map((r) => r.totalReward)) : 1;
   const maxMeanReward = allZones.aggregate ? Math.max(1, ...allZones.aggregate.map((r) => r.meanReward)) : 1;
 
@@ -53,10 +55,12 @@ export default function BenchmarkPage() {
             <input type="radio" name="source" value="demo" defaultChecked={source !== "idalia"} />
             Demo scenario
           </label>
-          <label className="flex items-center gap-1.5">
-            <input type="radio" name="source" value="idalia" defaultChecked={source === "idalia"} />
-            Hurricane Idalia (real data)
-          </label>
+          {!lowMemory && (
+            <label className="flex items-center gap-1.5">
+              <input type="radio" name="source" value="idalia" defaultChecked={source === "idalia"} />
+              Hurricane Idalia (real data)
+            </label>
+          )}
         </fieldset>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" name="includeCplex" defaultChecked={includeCplex} />
@@ -142,6 +146,9 @@ export default function BenchmarkPage() {
         </section>
       )}
 
+      {lowMemory ? (
+        <p className="mt-14 border-t pt-8 text-sm text-muted-foreground">{LOW_MEMORY_IDALIA_NOTE}</p>
+      ) : (
       <section className="mt-14 border-t pt-8">
         <h2 className="text-xl font-bold tracking-tight">Run across every shelter zone</h2>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
@@ -270,6 +277,7 @@ export default function BenchmarkPage() {
           </div>
         )}
       </section>
+      )}
     </div>
   );
 }

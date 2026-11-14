@@ -3,6 +3,8 @@ export interface NavItem {
   label: string;
   hint: string;
   external?: boolean;
+  /** Hidden on low-memory deployments (see lib/deploy-limits.ts). */
+  heavy?: boolean;
 }
 
 export interface NavSection {
@@ -39,7 +41,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: "Scenarios",
     items: [
-      { href: "/idalia-preview", label: "Hurricane Idalia", hint: "Real census-tract data" },
+      { href: "/idalia-preview", label: "Hurricane Idalia", hint: "Real census-tract data", heavy: true },
       { href: "/scale-preview", label: "Large region", hint: "Thousands of villages at once" },
     ],
   },

@@ -7,6 +7,7 @@ import type { GraphNode } from "@/types/graph";
 import { compareMethods, type ComparisonMethod, type MethodComparisonResult } from "@/solver/method-comparison";
 import type { GraphCluster } from "@/graph/spatial-clustering";
 import { loadIdaliaScenario } from "../idalia-preview/scene-data";
+import { isLowMemoryDeploy, LOW_MEMORY_IDALIA_NOTE } from "@/lib/deploy-limits";
 import { getBenchmarkState, type AggregateMethodStats, type ScenarioSource, type ZoneResult } from "./state";
 
 function safeRevalidate(): void {
@@ -86,7 +87,9 @@ function buildIdaliaScenario(): BuiltScenario | null {
 
 export async function runComparison(formData: FormData): Promise<void> {
   const state = getBenchmarkState();
-  const source = (formData.get("source") as ScenarioSource) ?? "demo";
+  // Low-memory hosts never load the Idalia data (see lib/deploy-limits.ts).
+  const requested = (formData.get("source") as ScenarioSource) ?? "demo";
+  const source: ScenarioSource = isLowMemoryDeploy() ? "demo" : requested;
   const includeCplex = formData.get("includeCplex") === "on";
 
   state.source = source;
@@ -120,6 +123,11 @@ export async function runComparison(formData: FormData): Promise<void> {
       candidateOriginIds: built.originIds,
       includeCplex,
       exactTimeLimitSeconds: 20,
+      // Single-zone comparison is the ground-truth view: prove the real
+      // optimum rather than accepting anything within 1%, so neural/greedy
+      // can never appear to beat "exact". (The all-zones batch below keeps
+      // the 1% default to stay fast across ~75 zones.)
+      exactMipGap: 0,
     });
     state.results = results;
     state.scenarioLabel = built.label;
@@ -195,6 +203,13 @@ export async function runAllZonesComparison(formData: FormData): Promise<void> {
   state.allZones.includeCplex = includeCplex;
   state.allZones.error = null;
   safeRevalidate();
+
+  if (isLowMemoryDeploy()) {
+    state.allZones.error = LOW_MEMORY_IDALIA_NOTE;
+    state.allZones.running = false;
+    safeRevalidate();
+    return;
+  }
 
   const scenario = loadIdaliaScenario();
   if (!scenario) {

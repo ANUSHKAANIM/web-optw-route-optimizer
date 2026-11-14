@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { hasDatabase } from "@/lib/has-database";
+import { isLowMemoryDeploy } from "@/lib/deploy-limits";
 
 export const metadata = { title: "Guided tour" };
 
@@ -108,10 +109,12 @@ export default function Home() {
         <section className="mt-10 rounded-xl border border-white/10 p-5">
           <h2 className="text-base font-semibold text-slate-100">More to explore</h2>
           <ul className="mt-2 flex flex-col gap-1.5 text-sm">
+            {!isLowMemoryDeploy() && (
             <li>
               <Link href="/idalia-preview" className="text-sky-300 hover:underline">Hurricane Idalia</Link> — the planner on real
               census-tract data.
             </li>
+            )}
             <li>
               <Link href="/scale-preview" className="text-sky-300 hover:underline">Large region</Link> — thousands of villages at
               once.

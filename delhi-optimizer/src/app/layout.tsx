@@ -4,6 +4,7 @@ import "./globals.css";
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { getAppSolverTier } from "@/lib/solver-preference";
 import { hasDatabase } from "@/lib/has-database";
+import { isLowMemoryDeploy } from "@/lib/deploy-limits";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,7 +31,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col md:flex-row">
-        <Sidebar solverTier={getAppSolverTier()} hasDatabase={hasDatabase()} />
+        <Sidebar solverTier={getAppSolverTier()} hasDatabase={hasDatabase()} lowMemory={isLowMemoryDeploy()} />
         <main className="min-w-0 flex-1">{children}</main>
       </body>
     </html>

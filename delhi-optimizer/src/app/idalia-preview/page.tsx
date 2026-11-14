@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { isLowMemoryDeploy, LOW_MEMORY_IDALIA_NOTE } from "@/lib/deploy-limits";
 import { OptimizerMap } from "@/components/map/optimizer-map";
 import { buildHeatmapGrid, type BinCellInput } from "@/components/map/risk-heatmap-binning";
 import { tierForRiskScore } from "@/forecast/risk-tiers";
@@ -34,6 +35,18 @@ export default async function IdaliaPreviewPage({
   const params = await searchParams;
   const focusVanId = params.focusVan !== undefined ? Number.parseInt(params.focusVan, 10) : undefined;
   const selectedVanId = params.selectVan !== undefined ? Number.parseInt(params.selectVan, 10) : undefined;
+
+  if (isLowMemoryDeploy()) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-16 text-center">
+        <h1 className="text-2xl font-bold tracking-tight">Hurricane Idalia (real data)</h1>
+        <p className="mt-3 text-sm text-muted-foreground">{LOW_MEMORY_IDALIA_NOTE}</p>
+        <Link href="/rolling-horizon" className="mt-6 inline-block rounded border px-3 py-1.5 text-sm hover:bg-accent">
+          See the same planner on the synthetic region →
+        </Link>
+      </div>
+    );
+  }
 
   const session = getSession();
 

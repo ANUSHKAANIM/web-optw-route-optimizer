@@ -13,7 +13,7 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(href + "/");
 }
 
-export function Sidebar({ solverTier, hasDatabase }: { solverTier: Tier; hasDatabase: boolean }) {
+export function Sidebar({ solverTier, hasDatabase, lowMemory }: { solverTier: Tier; hasDatabase: boolean; lowMemory: boolean }) {
   const pathname = usePathname();
   // The menu is open only for the page it was opened on, so it closes by
   // itself on navigation.
@@ -28,7 +28,7 @@ export function Sidebar({ solverTier, hasDatabase }: { solverTier: Tier; hasData
         <div key={section.title}>
           <div className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{section.title}</div>
           <ul className="flex flex-col gap-0.5">
-            {section.items.map((item) => {
+            {section.items.filter((item) => !(lowMemory && item.heavy)).map((item) => {
               const active = !item.external && isActive(pathname, item.href);
               const cls = `block rounded-md px-2 py-1.5 text-sm transition-colors ${
                 active ? "bg-sky-500/15 text-sky-200" : "text-slate-300 hover:bg-white/5 hover:text-white"
