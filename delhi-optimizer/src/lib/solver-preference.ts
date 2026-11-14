@@ -1,19 +1,19 @@
-import { session as controlRoom, setSolverTierSync } from "@/app/control-room/session";
-import { session as rollingHorizon, logEvent as logRollingHorizon } from "@/app/rolling-horizon/session";
-
-/** One solver choice for the whole app: the live pages (control room and
- * rolling horizon) each keep their own session, but switching the solver
- * anywhere -- the sidebar or either page's own buttons -- switches both. */
+/** One solver choice for the whole app. The live pages (control room and
+ * rolling horizon) each keep their own session, but they all read the
+ * solver from here, so switching it anywhere -- the sidebar or either
+ * page's own buttons -- switches it everywhere.
+ *
+ * Deliberately imports no session module: the sidebar reads this on every
+ * page, and importing a session would build that whole simulation in
+ * memory on every page load. */
 export type AppSolverTier = "fast" | "real";
 
+const store = globalThis as unknown as { appSolverTier?: AppSolverTier };
+
 export function getAppSolverTier(): AppSolverTier {
-  return controlRoom.solverTier;
+  return store.appSolverTier ?? "real";
 }
 
 export function setAppSolverTier(tier: AppSolverTier): void {
-  if (controlRoom.solverTier !== tier) setSolverTierSync(tier);
-  if (rollingHorizon.solverTier !== tier) {
-    rollingHorizon.solverTier = tier;
-    logRollingHorizon(tier === "real" ? "Solver switched to Real (neural Pointer Network)." : "Solver switched to Fast (greedy).");
-  }
+  store.appSolverTier = tier;
 }

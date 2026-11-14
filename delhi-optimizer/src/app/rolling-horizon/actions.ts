@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { session, logEvent, TICK_STEP_MINUTES, SOLVER_TIER_THRESHOLDS, type SolverTier } from "./session";
-import { setAppSolverTier } from "@/lib/solver-preference";
+import { getAppSolverTier, setAppSolverTier } from "@/lib/solver-preference";
 
 /** revalidatePath() requires Next's real request-scoped static-generation
  * store, which only exists when this runs inside an actual Next.js
@@ -36,14 +36,14 @@ export async function setSolverTier(tier: SolverTier): Promise<void> {
       : "Solver tier switched to Fast -- every replan uses the greedy baseline (~150ms/tick, measured).",
   );
   safeRevalidate("/rolling-horizon");
-  // Keep the app-wide solver choice in step (control room + sidebar).
+  // App-wide: also switches the control room and the sidebar.
   setAppSolverTier(tier);
   safeRevalidate("/");
 }
 
 export async function advanceTick(): Promise<void> {
   const nextTick = session.currentTick + 1;
-  const thresholds = SOLVER_TIER_THRESHOLDS[session.solverTier];
+  const thresholds = SOLVER_TIER_THRESHOLDS[getAppSolverTier()];
   const routes = await session.controller.onForecastTick(nextTick, nextTick * TICK_STEP_MINUTES, thresholds);
   for (const [vanId, route] of routes) session.vanRoutes.set(vanId, route);
   session.currentTick = nextTick;
@@ -53,7 +53,7 @@ export async function advanceTick(): Promise<void> {
 
 export async function simulateArrival(vanId: number, cellId: string, cellName: string): Promise<void> {
   if (session.currentTick < 0) return;
-  const thresholds = SOLVER_TIER_THRESHOLDS[session.solverTier];
+  const thresholds = SOLVER_TIER_THRESHOLDS[getAppSolverTier()];
   const routes = await session.controller.onVanArrival(vanId, cellId, nowMinutes(), thresholds);
   for (const [id, route] of routes) session.vanRoutes.set(id, route);
   logEvent(`Van ${vanId + 1} evacuated ${cellName} -- masked immediately for every other van, its own route replanned.`);
@@ -62,7 +62,7 @@ export async function simulateArrival(vanId: number, cellId: string, cellName: s
 
 export async function overrideVan(vanId: number, cellId: string, cellName: string): Promise<void> {
   if (session.currentTick < 0) return;
-  const thresholds = SOLVER_TIER_THRESHOLDS[session.solverTier];
+  const thresholds = SOLVER_TIER_THRESHOLDS[getAppSolverTier()];
   const routes = await session.controller.onHumanOverride(vanId, cellId, nowMinutes(), thresholds);
   for (const [id, route] of routes) session.vanRoutes.set(id, route);
   const honored = routes.get(vanId)?.stops[0]?.nodeId === cellId;

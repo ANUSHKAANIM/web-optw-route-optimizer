@@ -1,6 +1,7 @@
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { session, VAN_COLORS, VAN_COUNT, FORECAST_INTERVAL_SECONDS, STORM_HOURS_PER_FORECAST, LOOKAHEAD_HOURS, VAN_SHIFT_HOURS, stormMinutesElapsed, stormMinutesUntilScheduled, screenNextUpdateIso } from "./session";
 import { ControlRoomView, type ControlRoomNode, type ControlRoomVan, type ControlRoomZone } from "./control-room-view";
+import { getAppSolverTier } from "@/lib/solver-preference";
 
 const plexMono = IBM_Plex_Mono({ weight: "500", subsets: ["latin"] });
 const plexSans = IBM_Plex_Sans({ weight: "400", subsets: ["latin"] });
@@ -28,9 +29,9 @@ export default function ControlRoomPage() {
     vanRoutes,
     vanStartPositions,
     evacuatedCellIds,
-    solverTier,
     log,
   } = session;
+  const solverTier = getAppSolverTier();
   const nodesById = new Map(cells.map((n) => [n.id, n]));
   const sheltersById = new Map(shelters.map((s) => [s.id, s]));
 

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getAppSolverTier } from "@/lib/solver-preference";
 import { OptimizerMap } from "@/components/map/optimizer-map";
 import { ForecastCountdown } from "@/components/forecast-countdown";
 import { buildHeatmapGrid, type BinCellInput } from "@/components/map/risk-heatmap-binning";
@@ -40,7 +41,8 @@ export default async function RollingHorizonPage({
   const focusVanId = params.focusVan !== undefined ? Number.parseInt(params.focusVan, 10) : undefined;
   const selectedVanId = params.selectVan !== undefined ? Number.parseInt(params.selectVan, 10) : undefined;
 
-  const { cells, clusters, controller, currentTick, vanRoutes, log, solverTier } = session;
+  const { cells, clusters, controller, currentTick, vanRoutes, log } = session;
+  const solverTier = getAppSolverTier();
   const nodesById = new Map(cells.map((n) => [n.id, n]));
   const lastTick = controller.getLastTick();
   const vans = controller.getAllVans();

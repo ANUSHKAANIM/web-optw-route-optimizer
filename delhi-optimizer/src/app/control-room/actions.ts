@@ -3,11 +3,11 @@
 import { revalidatePath } from "next/cache";
 import {
   advanceForecast as advanceForecastSession,
+  setSolverTierSync,
   markEvacuatedSync,
   resetSessionSync,
   type SolverTier,
 } from "./session";
-import { setAppSolverTier } from "@/lib/solver-preference";
 
 function safeRevalidate(): void {
   try {
@@ -37,7 +37,7 @@ export async function issueSpecialAdvisory(): Promise<void> {
 
 export async function setSolverTier(tier: SolverTier): Promise<void> {
   // App-wide: also switches the rolling-horizon page and the sidebar.
-  setAppSolverTier(tier);
+  setSolverTierSync(tier);
   safeRevalidate();
   try {
     revalidatePath("/", "layout");

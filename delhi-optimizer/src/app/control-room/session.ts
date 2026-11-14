@@ -8,6 +8,7 @@ import { priorityFromForecastTick } from "@/forecast/priority-from-forecast";
 import type { GraphNode } from "@/types/graph";
 import type { Route } from "@/types/game";
 import { positionAtMinute, type Waypoint } from "./van-timeline";
+import { getAppSolverTier, setAppSolverTier } from "@/lib/solver-preference";
 
 /**
  * A small, fast demo scenario wired through the SAME real solver stack
@@ -326,7 +327,7 @@ export async function advanceForecast(kind: "scheduled" | "special" = "scheduled
   // outranks a small threatened one -- safe villages are picked only when
   // a van has spare time and nothing at-risk is reachable.
   const { priorities, riskScores } = priorityFromForecastTick(session.cells, lastTick, SAFE_VILLAGE_URGENCY);
-  const thresholds = SOLVER_TIER_THRESHOLDS[session.solverTier];
+  const thresholds = SOLVER_TIER_THRESHOLDS[getAppSolverTier()];
   // Per-village forecast-driven evacuation deadlines. The engine reports
   // windows in storm-minutes-from-session-start, but every solver's clock
   // starts at 0 = the start of the trip being planned, so shift each
@@ -681,6 +682,7 @@ export function screenNextUpdateIso(): string {
 
 export function setSolverTierSync(tier: SolverTier): void {
   session.solverTier = tier;
+  setAppSolverTier(tier);
   logEvent(tier === "real" ? "Solver switched to Real (neural Pointer Network)." : "Solver switched to Fast (greedy).");
 }
 
