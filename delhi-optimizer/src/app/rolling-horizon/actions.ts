@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { session, logEvent, TICK_STEP_MINUTES, SOLVER_TIER_THRESHOLDS, type SolverTier } from "./session";
+import { setAppSolverTier } from "@/lib/solver-preference";
 
 /** revalidatePath() requires Next's real request-scoped static-generation
  * store, which only exists when this runs inside an actual Next.js
@@ -35,6 +36,9 @@ export async function setSolverTier(tier: SolverTier): Promise<void> {
       : "Solver tier switched to Fast -- every replan uses the greedy baseline (~150ms/tick, measured).",
   );
   safeRevalidate("/rolling-horizon");
+  // Keep the app-wide solver choice in step (control room + sidebar).
+  setAppSolverTier(tier);
+  safeRevalidate("/");
 }
 
 export async function advanceTick(): Promise<void> {

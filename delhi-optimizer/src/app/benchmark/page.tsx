@@ -37,9 +37,14 @@ export default function BenchmarkPage() {
             total reward each one actually collected.
           </p>
         </div>
-        <Link href="/rolling-horizon" className="shrink-0 rounded border px-3 py-1.5 text-sm hover:bg-accent">
-          ← Back to demo
-        </Link>
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+          <Link href="/control-room" className="rounded border px-3 py-1.5 text-sm hover:bg-accent">
+            See it live →
+          </Link>
+          <Link href="/sensitivity" className="rounded border px-3 py-1.5 text-sm hover:bg-accent">
+            Sensitivity test →
+          </Link>
+        </div>
       </header>
 
       <form action={runComparison} className="mt-6 flex flex-wrap items-center gap-4 rounded border p-4 text-sm">

@@ -3,11 +3,11 @@
 import { revalidatePath } from "next/cache";
 import {
   advanceForecast as advanceForecastSession,
-  setSolverTierSync,
   markEvacuatedSync,
   resetSessionSync,
   type SolverTier,
 } from "./session";
+import { setAppSolverTier } from "@/lib/solver-preference";
 
 function safeRevalidate(): void {
   try {
@@ -36,8 +36,14 @@ export async function issueSpecialAdvisory(): Promise<void> {
 }
 
 export async function setSolverTier(tier: SolverTier): Promise<void> {
-  setSolverTierSync(tier);
+  // App-wide: also switches the rolling-horizon page and the sidebar.
+  setAppSolverTier(tier);
   safeRevalidate();
+  try {
+    revalidatePath("/", "layout");
+  } catch {
+    // no-op outside a real Next.js request context
+  }
 }
 
 /** Fired by the client the moment a van's animation actually passes a

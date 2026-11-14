@@ -40,7 +40,7 @@ export default async function IdaliaPreviewPage({
   if (!session) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold tracking-tight">Hurricane Idalia -- real census-tract preview</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Hurricane Idalia (real data)</h1>
         <p className="mt-3 text-sm text-muted-foreground">
           Waiting on the real dataset. Save <code className="rounded bg-muted px-1">Census_Tracts_Rewards.csv</code> to:
         </p>
@@ -60,7 +60,7 @@ export default async function IdaliaPreviewPage({
   if (currentTick < 0) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold tracking-tight">Hurricane Idalia -- real census-tract live session</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Hurricane Idalia (real data) -- live session</h1>
         <p className="mt-3 text-sm text-muted-foreground">
           {cells.filter((c) => c.role === "origin").length.toLocaleString()} real tracts, {clusters.length} shelters,{" "}
           {vans.length} vans. Starting runs the real solver stack for the first time -- tick 0, every van replanned

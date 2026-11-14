@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import Link from "next/link";
 import { planeDistanceKm } from "@/graph/plane-distance";
 import type { RiskTier } from "@/forecast/risk-tiers";
 import { advanceForecast, issueSpecialAdvisory, setSolverTier, markEvacuated, resetSession } from "./actions";
@@ -591,6 +592,10 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
               </span>
             </div>
             <h1 style={{ margin: "6px 0 0", fontSize: 28, fontWeight: 600, letterSpacing: "-0.01em" }}>Cyclone Evacuation Control</h1>
+            <div style={{ marginTop: 6, display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13 }}>
+              <Link href="/benchmark" style={{ color: "#7cc8f0" }}>Compare solvers on this problem →</Link>
+              <Link href="/sensitivity" style={{ color: "#7cc8f0" }}>Why replan every 6 h? →</Link>
+            </div>
           </div>
 
           <button

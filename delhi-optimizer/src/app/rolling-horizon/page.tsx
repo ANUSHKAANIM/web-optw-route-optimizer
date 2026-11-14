@@ -171,6 +171,9 @@ export default async function RollingHorizonPage({
             <Link href="/benchmark" className="rounded border px-2 py-1 text-xs hover:bg-accent">
               Reward benchmark →
             </Link>
+            <Link href="/idalia-preview" className="rounded border px-2 py-1 text-xs hover:bg-accent">
+              Same planner on real Idalia data →
+            </Link>
           </div>
         </div>
         {/* Solver tier: "fast" (greedy, the long-standing default) vs
