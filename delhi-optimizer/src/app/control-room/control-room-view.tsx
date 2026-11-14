@@ -210,6 +210,9 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [selectedVanId, setSelectedVanId] = useState(vans[0]?.id ?? 0);
   const [hover, setHover] = useState<{ x: number; y: number; node: ControlRoomNode } | null>(null);
+  // The tooltip always reads the village from the CURRENT props, so a new
+  // forecast landing while the cursor is still is reflected immediately.
+  const hoverNode = hover ? (nodes.find((n) => n.id === hover.node.id) ?? hover.node) : null;
   const [pending, setPending] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
@@ -780,19 +783,19 @@ export function ControlRoomView({ shelters, nodes, vans, zone, bounds, tick, tim
                   }}
                 >
                   <div>
-                    {hover.node.name} &middot; {hover.node.demand} people &middot;{" "}
-                    {hover.node.evacuated ? "evacuated" : hover.node.tier}
-                    {!hover.node.evacuated && hover.node.tier !== "normal" && ` (${Math.round(hover.node.riskScore * 100)}% risk)`}
+                    {hoverNode!.name} &middot; {hoverNode!.demand} people &middot;{" "}
+                    {hoverNode!.evacuated ? "evacuated" : hoverNode!.tier}
+                    {!hoverNode!.evacuated && hoverNode!.tier !== "normal" && ` (${Math.round(hoverNode!.riskScore * 100)}% risk)`}
                   </div>
-                  {!hover.node.evacuated && hover.node.status && (
+                  {!hoverNode!.evacuated && hoverNode!.status && (
                     <>
                       <div style={{ color: "#9aa6b6" }}>
-                        score {hover.node.status.score}
-                        {hover.node.status.deadlineHours !== null &&
-                          ` · deadline ${hover.node.status.deadlineHours > 0 ? `in ${hover.node.status.deadlineHours.toFixed(1)} h` : "passed"}`}
+                        score {hoverNode!.status.score}
+                        {hoverNode!.status.deadlineHours !== null &&
+                          ` · deadline ${hoverNode!.status.deadlineHours > 0 ? `in ${hoverNode!.status.deadlineHours.toFixed(1)} h` : "passed"}`}
                       </div>
-                      <div style={{ color: hover.node.status.state === "assigned" ? "#6ee7a0" : "#ffd166", fontFamily: `${sansFont}, sans-serif`, marginTop: 2 }}>
-                        {hover.node.status.reason}
+                      <div style={{ color: hoverNode!.status.state === "assigned" ? "#6ee7a0" : "#ffd166", fontFamily: `${sansFont}, sans-serif`, marginTop: 2 }}>
+                        {hoverNode!.status.reason}
                       </div>
                     </>
                   )}
